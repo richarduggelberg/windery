@@ -87,6 +87,20 @@ function scaledUnit(baseUnit, idx) {
   return UNIT_PREFIXES[idx] + baseUnit.slice(1);
 }
 
+// Formats a raw SEK amount, scaling up through thousand/million/billion/trillion as needed.
+const SEK_TIERS = ["SEK", "thousand SEK", "million SEK", "billion SEK", "trillion SEK"];
+function formatSEK(value) {
+  let idx = 0;
+  let v = Math.abs(value);
+  while (v >= 1000 && idx < SEK_TIERS.length - 1) {
+    v /= 1000;
+    idx++;
+  }
+  const decimals = v < 10 ? 2 : v < 100 ? 1 : 0;
+  const sign = value < 0 ? "-" : "";
+  return `${sign}${v.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })} ${SEK_TIERS[idx]}`;
+}
+
 // Formats a value (in baseUnit, e.g. "MW"/"MWh") scaling up to GW/TW/etc. once it exceeds 1000 of the current unit.
 function formatQuantity(value, baseUnit) {
   const { idx, factor } = unitTier(value);
@@ -182,6 +196,25 @@ async function main() {
   const capVariableUsed = document.getElementById("capVariableUsed");
   const capBatteryInstalled = document.getElementById("capBatteryInstalled");
   const capBatteryUsed = document.getElementById("capBatteryUsed");
+  const costNuclearInput = document.getElementById("costNuclear");
+  const costWindInput = document.getElementById("costWind");
+  const costHydroInput = document.getElementById("costHydro");
+  const costBatteryInput = document.getElementById("costBattery");
+  const costAddedBase = document.getElementById("costAddedBase");
+  const costSekBase = document.getElementById("costSekBase");
+  const costAddedWind = document.getElementById("costAddedWind");
+  const costSekWind = document.getElementById("costSekWind");
+  const costAddedVariable = document.getElementById("costAddedVariable");
+  const costSekVariable = document.getElementById("costSekVariable");
+  const costAddedBattery = document.getElementById("costAddedBattery");
+  const costSekBattery = document.getElementById("costSekBattery");
+  const costSekTotal = document.getElementById("costSekTotal");
+
+  // Highest capacity ever reached per slider; dismantling (lowering a slider) doesn't undo accrued cost.
+  let peakWindMW = WIND_BASELINE_MW;
+  let peakBaseMW = BASELOAD_BASELINE_MW;
+  let peakVariableMW = VARIABLE_BASELINE_MW;
+  let peakBatteryTWh = 0;
 
   // The fetched profile already represents Sweden's current nationwide demand; the slider scales it up/down from there.
   const baseAnnualDemandMWh = demand.demandMW.reduce((a, b) => a + b, 0);
@@ -339,18 +372,9 @@ async function main() {
     const scaledDemandMW = demand.demandMW.map((v) => v * demandFactor);
     demandScaleValue.textContent = `${demandScalePercent}% (${formatQuantity(baseAnnualDemandMWh * demandFactor, "MWh")}/yr)`;
 
-    // Cap the battery slider at the total energy demand over the displayed window —
-    // a battery bigger than that could never be more than fully useful there.
-    // Step stays fixed (changing it can silently snap the current value to 0 in some browsers).
-    const totalDemandMWh = scaledDemandMW.slice(start, end).reduce((a, b) => a + b, 0);
-    const batteryMax = Math.max(100, Math.round(totalDemandMWh));
-    batteryCapacityInput.max = batteryMax;
-    if (Number(batteryCapacityInput.value) > batteryMax) {
-      batteryCapacityInput.value = batteryMax;
-    }
-
     const windCapacityMW = WIND_BASELINE_MW * (Number(windCapacityInput.value) / 100);
-    const batteryCapacityMWh = Number(batteryCapacityInput.value);
+    // Battery slider is in TWh (10 TWh increments); convert to MWh for the simulation.
+    const batteryCapacityMWh = Number(batteryCapacityInput.value) * 1e6;
     const baseloadMW = BASELOAD_BASELINE_MW * (Number(baseloadCapacityInput.value) / 100);
     const variableCapacityMW = VARIABLE_BASELINE_MW * (Number(variableCapacityInput.value) / 100);
     windCapacityValue.textContent = `${windCapacityInput.value}% (${formatQuantity(windCapacityMW, "MW")})`;
@@ -454,6 +478,36 @@ async function main() {
     const avgSocMWh = windowAverage(socMWh);
     capBatteryInstalled.textContent = formatQuantity(batteryCapacityMWh, "MWh");
     capBatteryUsed.textContent = `${usedPct(avgSocMWh, batteryCapacityMWh).toFixed(0)}% avg. charge`;
+
+    // Cumulative build cost: only capacity above each source's default (already-installed) level counts,
+    // tracked via a high-water mark so lowering a slider back down doesn't undo already-accrued cost.
+    peakWindMW = Math.max(peakWindMW, windCapacityMW);
+    peakBaseMW = Math.max(peakBaseMW, baseloadMW);
+    peakVariableMW = Math.max(peakVariableMW, variableCapacityMW);
+    peakBatteryTWh = Math.max(peakBatteryTWh, Number(batteryCapacityInput.value));
+
+    const addedWindMW = peakWindMW - WIND_BASELINE_MW;
+    const addedBaseMW = peakBaseMW - BASELOAD_BASELINE_MW;
+    const addedVariableMW = peakVariableMW - VARIABLE_BASELINE_MW;
+    const addedBatteryTWh = peakBatteryTWh;
+
+    // Cost inputs are billion SEK per GW (generation) or per TWh (battery).
+    const sekPerMW = (billionPerGW) => (Number(billionPerGW) * 1e9) / 1000;
+    const baseCostSEK = addedBaseMW * sekPerMW(costNuclearInput.value);
+    const windCostSEK = addedWindMW * sekPerMW(costWindInput.value);
+    const variableCostSEK = addedVariableMW * sekPerMW(costHydroInput.value);
+    const batteryCostSEK = addedBatteryTWh * Number(costBatteryInput.value) * 1e9;
+    const totalCostSEK = baseCostSEK + windCostSEK + variableCostSEK + batteryCostSEK;
+
+    costAddedBase.textContent = formatQuantity(addedBaseMW, "MW");
+    costSekBase.textContent = formatSEK(baseCostSEK);
+    costAddedWind.textContent = formatQuantity(addedWindMW, "MW");
+    costSekWind.textContent = formatSEK(windCostSEK);
+    costAddedVariable.textContent = formatQuantity(addedVariableMW, "MW");
+    costSekVariable.textContent = formatSEK(variableCostSEK);
+    costAddedBattery.textContent = formatQuantity(addedBatteryTWh * 1e6, "MWh");
+    costSekBattery.textContent = formatSEK(batteryCostSEK);
+    costSekTotal.textContent = formatSEK(totalCostSEK);
   }
 
   periodInput.addEventListener("change", update);
@@ -462,6 +516,10 @@ async function main() {
   batteryCapacityInput.addEventListener("input", update);
   baseloadCapacityInput.addEventListener("input", update);
   variableCapacityInput.addEventListener("input", update);
+  costNuclearInput.addEventListener("input", update);
+  costWindInput.addEventListener("input", update);
+  costHydroInput.addEventListener("input", update);
+  costBatteryInput.addEventListener("input", update);
   update();
 }
 
