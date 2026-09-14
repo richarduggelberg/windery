@@ -146,6 +146,7 @@ async function main() {
   ]);
 
   const periodInput = document.getElementById("period");
+  const demandScaleInput = document.getElementById("demandScale");
   const windCapacityInput = document.getElementById("windCapacity");
   const batteryCapacityInput = document.getElementById("batteryCapacity");
   const baseloadCapacityInput = document.getElementById("baseloadCapacity");
@@ -154,8 +155,12 @@ async function main() {
   const batteryCapacityValue = document.getElementById("batteryCapacityValue");
   const baseloadCapacityValue = document.getElementById("baseloadCapacityValue");
   const variableCapacityValue = document.getElementById("variableCapacityValue");
+  const demandScaleValue = document.getElementById("demandScaleValue");
   const probabilityEl = document.getElementById("probability");
   const probabilityNoteEl = document.getElementById("probabilityNote");
+
+  // The fetched profile already represents Sweden's current nationwide demand; the slider scales it up/down from there.
+  const baseAnnualDemandMWh = demand.demandMW.reduce((a, b) => a + b, 0);
 
   // Resample a full-year series to the selected window, using hourly points for
   // short windows and daily means for longer ones so the chart stays readable.
@@ -237,10 +242,15 @@ async function main() {
     const period = periodInput.value;
     const [start, end] = periodIndexRange(wind.time, period);
 
+    const demandScalePercent = Number(demandScaleInput.value);
+    const demandFactor = demandScalePercent / 100;
+    const scaledDemandMW = demand.demandMW.map((v) => v * demandFactor);
+    demandScaleValue.textContent = `${demandScalePercent}% (${formatQuantity(baseAnnualDemandMWh * demandFactor, "MWh")}/yr)`;
+
     // Cap the battery slider at the total energy demand over the displayed window —
     // a battery bigger than that could never be more than fully useful there.
     // Step stays fixed (changing it can silently snap the current value to 0 in some browsers).
-    const totalDemandMWh = demand.demandMW.slice(start, end).reduce((a, b) => a + b, 0);
+    const totalDemandMWh = scaledDemandMW.slice(start, end).reduce((a, b) => a + b, 0);
     const batteryMax = Math.max(100, Math.round(totalDemandMWh));
     batteryCapacityInput.max = batteryMax;
     if (Number(batteryCapacityInput.value) > batteryMax) {
@@ -260,7 +270,7 @@ async function main() {
     // then slice down to the selected window for display and the probability figure.
     const { generationMW, variableGenMW, socMWh, unmet } = runSimulation(
       wind.windSpeed100m,
-      demand.demandMW,
+      scaledDemandMW,
       windCapacityMW,
       batteryCapacityMWh,
       baseloadMW,
@@ -270,7 +280,7 @@ async function main() {
     const genResampled = resample(wind.time, generationMW, period, start, end);
     const variableResampled = resample(wind.time, variableGenMW, period, start, end);
     const socResampled = resample(wind.time, socMWh, period, start, end);
-    const demandResampled = resample(demand.time, demand.demandMW, period, start, end);
+    const demandResampled = resample(demand.time, scaledDemandMW, period, start, end);
     const baseloadSeries = new Array(genResampled.values.length).fill(baseloadMW);
 
     // Pick one unit per axis (MW/GW/TW...) based on the largest value currently shown on it.
@@ -307,6 +317,7 @@ async function main() {
   }
 
   periodInput.addEventListener("change", update);
+  demandScaleInput.addEventListener("input", update);
   windCapacityInput.addEventListener("input", update);
   batteryCapacityInput.addEventListener("input", update);
   baseloadCapacityInput.addEventListener("input", update);
