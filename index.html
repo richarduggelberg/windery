@@ -59,8 +59,9 @@
     <p class="disclaimer">
       Wind speed data: Open-Meteo historical archive (ERA5) for Stockholm. Demand is a synthetic, illustrative profile
       (not real metered data) with realistic daily/weekly/seasonal shape. Base capacity generates a constant output at
-      all times. Variable capacity only dispatches to cover demand not met by wind, base capacity, and the battery, up
-      to its installed limit. Battery is modeled with unlimited charge/discharge power and a simple energy cap.
+      all times. Variable capacity dispatches to cover demand not met by wind, base capacity, and the battery, up to
+      its installed limit, and also tops up the battery with any spare capacity once demand is covered. Battery is
+      modeled with unlimited charge/discharge power and a simple energy cap.
     </p>
   </main>
 

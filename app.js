@@ -73,16 +73,33 @@ function runSimulation(
     let variableGen = 0;
 
     if (net >= 0) {
+      // Surplus wind + base generation charges the battery first.
+      const surplus = net;
+      const chargeFromSurplus = Math.min(surplus, batteryCapacityMWh - soc);
+      soc += chargeFromSurplus;
+
+      // Any remaining battery headroom is topped up by idle variable capacity.
       const chargeRoom = batteryCapacityMWh - soc;
-      soc += Math.min(net, chargeRoom);
+      const chargeFromVariable = Math.min(chargeRoom, variableCapacityMW);
+      soc += chargeFromVariable;
+      variableGen = chargeFromVariable;
     } else {
       let deficit = -net;
       const discharge = Math.min(deficit, soc);
       soc -= discharge;
       deficit -= discharge;
-      variableGen = Math.min(deficit, variableCapacityMW); // dispatchable gas/hydro fills the rest
-      deficit -= variableGen;
+
+      // Dispatchable gas/hydro fills the remaining shortfall first.
+      const coverDeficit = Math.min(deficit, variableCapacityMW);
+      deficit -= coverDeficit;
       if (deficit > 0) unmet[i] = 1;
+
+      // Any leftover variable capacity charges the battery if it still has room.
+      const leftoverVariableCap = variableCapacityMW - coverDeficit;
+      const chargeRoom = batteryCapacityMWh - soc;
+      const chargeFromVariable = Math.min(leftoverVariableCap, chargeRoom);
+      soc += chargeFromVariable;
+      variableGen = coverDeficit + chargeFromVariable;
     }
     generationMW[i] = windGen;
     variableGenMW[i] = variableGen;
