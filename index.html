@@ -85,6 +85,10 @@
         <h2>Generation mix, battery charge &amp; demand</h2>
         <canvas id="combinedChart"></canvas>
       </div>
+      <div class="chart-card">
+        <h2>Estimated electricity price</h2>
+        <canvas id="priceChart"></canvas>
+      </div>
     </section>
 
     <section class="capacity-summary">
@@ -168,6 +172,83 @@
             </tr>
           </tbody>
         </table>
+      </div>
+    </section>
+
+    <section class="operating-cost">
+      <div class="chart-card">
+        <h2>Operating cost &amp; revenue (selected period)</h2>
+        <p class="assumptions-note">
+          Average simulated price: <span id="avgSimPrice">–</span> &middot;
+          average historical SE3 spot price in this window (2024, real data): <span id="avgHistPrice">–</span>
+        </p>
+        <table id="operatingCostTable" class="data-table">
+          <thead>
+            <tr>
+              <th>Source</th>
+              <th>Generation</th>
+              <th>Cost / revenue</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Nuclear (base)</td>
+              <td id="opGenNuclear"></td>
+              <td id="opCostNuclear"></td>
+            </tr>
+            <tr>
+              <td>Coal (base)</td>
+              <td id="opGenCoal"></td>
+              <td id="opCostCoal"></td>
+            </tr>
+            <tr>
+              <td>Wind</td>
+              <td id="opGenWind"></td>
+              <td id="opCostWind"></td>
+            </tr>
+            <tr>
+              <td>Solar</td>
+              <td id="opGenSolar"></td>
+              <td id="opCostSolar"></td>
+            </tr>
+            <tr>
+              <td>Hydro (variable)</td>
+              <td id="opGenHydro"></td>
+              <td id="opCostHydro"></td>
+            </tr>
+            <tr>
+              <td>Gas (variable)</td>
+              <td id="opGenGas"></td>
+              <td id="opCostGas"></td>
+            </tr>
+            <tr>
+              <td>Battery discharge</td>
+              <td id="opGenBattery"></td>
+              <td id="opCostBattery"></td>
+            </tr>
+            <tr>
+              <td>Imports</td>
+              <td id="opGenImport"></td>
+              <td id="opCostImport"></td>
+            </tr>
+            <tr>
+              <td>Exports (revenue)</td>
+              <td id="opGenExport"></td>
+              <td id="opCostExport"></td>
+            </tr>
+            <tr class="total-row">
+              <td>Net total</td>
+              <td></td>
+              <td id="opCostTotal"></td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="assumptions-note">
+          Not a real market simulation: each hour's price is estimated as the marginal cost of the most expensive
+          source needed that hour (see the price assumptions table below), following the same priority order as the
+          dispatch model — base and wind/solar never set the price since they're never the last resort; imports use
+          a scarcity price. Exports are valued at that same hour's price and shown as negative (revenue, not cost).
+        </p>
       </div>
     </section>
 
@@ -270,6 +351,74 @@
           particular year). Levelized figures (LCOE/LCOS) fold in lifetime capital, operating, and financing costs
           per unit of installed capacity; wind's figure is weighted up to reflect the extra grid/network buildout it
           typically requires compared to plants sited near existing strong grid infrastructure.
+        </p>
+      </div>
+    </section>
+
+    <section class="assumptions">
+      <div class="chart-card">
+        <h2>Marginal cost &amp; price assumptions (editable)</h2>
+        <table id="marginalCostTable" class="data-table">
+          <thead>
+            <tr>
+              <th>Source</th>
+              <th>Marginal cost</th>
+              <th>Basis</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Nuclear (base)</td>
+              <td><input type="number" id="costMarginalNuclear" value="50" step="5"> SEK/MWh</td>
+              <td>Fuel + O&amp;M only (capital cost excluded; recovered separately, not via the spot price)</td>
+            </tr>
+            <tr>
+              <td>Coal (base)</td>
+              <td><input type="number" id="costMarginalCoal" value="700" step="10"> SEK/MWh</td>
+              <td>Fuel + EU carbon allowance cost</td>
+            </tr>
+            <tr>
+              <td>Wind</td>
+              <td><input type="number" id="costMarginalWind" value="0" step="5"> SEK/MWh</td>
+              <td>No fuel cost</td>
+            </tr>
+            <tr>
+              <td>Solar</td>
+              <td><input type="number" id="costMarginalSolar" value="0" step="5"> SEK/MWh</td>
+              <td>No fuel cost</td>
+            </tr>
+            <tr>
+              <td>Hydro (variable)</td>
+              <td><input type="number" id="costMarginalHydro" value="60" step="5"> SEK/MWh</td>
+              <td>Opportunity cost of stored water, not a fuel cost</td>
+            </tr>
+            <tr>
+              <td>Gas (variable)</td>
+              <td><input type="number" id="costMarginalGas" value="950" step="10"> SEK/MWh</td>
+              <td>Fuel + carbon cost; typically the price-setting source when it runs</td>
+            </tr>
+            <tr>
+              <td>Battery discharge</td>
+              <td><input type="number" id="costMarginalBattery" value="150" step="5"> SEK/MWh</td>
+              <td>Round-trip losses + degradation (proxy, not a fuel cost)</td>
+            </tr>
+            <tr>
+              <td>Imports</td>
+              <td><input type="number" id="costMarginalImport" value="1500" step="25"> SEK/MWh</td>
+              <td>Scarcity price when even gas capacity is exhausted</td>
+            </tr>
+            <tr>
+              <td>Surplus / renewables-saturated hours</td>
+              <td><input type="number" id="costMarginalSurplus" value="20" step="5"> SEK/MWh</td>
+              <td>Base + wind/solar alone cover demand; can be set negative like real oversupply hours</td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="assumptions-note">
+          Illustrative, editable marginal (short-run operating) costs — different from the capital build costs above.
+          Each hour, the price is set to the marginal cost of whichever source was needed last, in the same priority
+          order as the dispatch model (see "Operating cost &amp; revenue" below). Educated-guess estimates, not
+          official figures.
         </p>
       </div>
     </section>

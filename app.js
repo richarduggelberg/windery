@@ -237,12 +237,28 @@ async function loadJSON(path) {
   return res.json();
 }
 
+// Real price timestamps (local CET/CEST-derived) don't line up 1:1 with the UTC hourly grid used
+// elsewhere, so look up by timestamp rather than assuming matching array indices; forward/back-fill
+// the rare missing hour (e.g. right at the edges of the year) so the reference series has no gaps.
+function alignHistoricalPrices(time, priceTime, priceSekMwh) {
+  const byTime = new Map(priceTime.map((t, i) => [t, priceSekMwh[i]]));
+  const aligned = time.map((t) => byTime.get(t) ?? null);
+  let lastKnown = aligned.find((v) => v !== null) ?? 0;
+  for (let i = 0; i < aligned.length; i++) {
+    if (aligned[i] === null) aligned[i] = lastKnown;
+    else lastKnown = aligned[i];
+  }
+  return aligned;
+}
+
 async function main() {
-  const [wind, solar, demand] = await Promise.all([
+  const [wind, solar, demand, price] = await Promise.all([
     loadJSON("data/wind.json"),
     loadJSON("data/solar.json"),
     loadJSON("data/demand.json"),
+    loadJSON("data/price.json"),
   ]);
+  const historicalPriceSekMwh = alignHistoricalPrices(wind.time, price.time, price.sekPerMWh);
 
   const periodMonthInput = document.getElementById("periodMonth");
   const periodWeekInput = document.getElementById("periodWeek");
@@ -324,6 +340,36 @@ async function main() {
   const costAddedBattery = document.getElementById("costAddedBattery");
   const costSekBattery = document.getElementById("costSekBattery");
   const costSekTotal = document.getElementById("costSekTotal");
+  const costMarginalNuclearInput = document.getElementById("costMarginalNuclear");
+  const costMarginalCoalInput = document.getElementById("costMarginalCoal");
+  const costMarginalWindInput = document.getElementById("costMarginalWind");
+  const costMarginalSolarInput = document.getElementById("costMarginalSolar");
+  const costMarginalHydroInput = document.getElementById("costMarginalHydro");
+  const costMarginalGasInput = document.getElementById("costMarginalGas");
+  const costMarginalBatteryInput = document.getElementById("costMarginalBattery");
+  const costMarginalImportInput = document.getElementById("costMarginalImport");
+  const costMarginalSurplusInput = document.getElementById("costMarginalSurplus");
+  const avgSimPriceEl = document.getElementById("avgSimPrice");
+  const avgHistPriceEl = document.getElementById("avgHistPrice");
+  const opGenNuclear = document.getElementById("opGenNuclear");
+  const opCostNuclear = document.getElementById("opCostNuclear");
+  const opGenCoal = document.getElementById("opGenCoal");
+  const opCostCoal = document.getElementById("opCostCoal");
+  const opGenWind = document.getElementById("opGenWind");
+  const opCostWind = document.getElementById("opCostWind");
+  const opGenSolar = document.getElementById("opGenSolar");
+  const opCostSolar = document.getElementById("opCostSolar");
+  const opGenHydro = document.getElementById("opGenHydro");
+  const opCostHydro = document.getElementById("opCostHydro");
+  const opGenGas = document.getElementById("opGenGas");
+  const opCostGas = document.getElementById("opCostGas");
+  const opGenBattery = document.getElementById("opGenBattery");
+  const opCostBattery = document.getElementById("opCostBattery");
+  const opGenImport = document.getElementById("opGenImport");
+  const opCostImport = document.getElementById("opCostImport");
+  const opGenExport = document.getElementById("opGenExport");
+  const opCostExport = document.getElementById("opCostExport");
+  const opCostTotal = document.getElementById("opCostTotal");
 
   // The fetched profile already represents Sweden's current nationwide demand; the slider scales it up/down from there.
   const baseAnnualDemandMWh = demand.demandMW.reduce((a, b) => a + b, 0);
@@ -590,6 +636,42 @@ async function main() {
     },
   });
 
+  const priceChart = new Chart(document.getElementById("priceChart"), {
+    type: "line",
+    data: {
+      labels: [],
+      datasets: [
+        {
+          label: "Simulated price (SEK/MWh)",
+          data: [],
+          borderColor: "#c44536",
+          pointRadius: 0,
+          borderWidth: 1.5,
+          fill: false,
+          order: 1,
+        },
+        {
+          label: "Historical SE3 spot price, 2024 (SEK/MWh)",
+          data: [],
+          borderColor: "#8a8a8a",
+          borderDash: [4, 3],
+          pointRadius: 0,
+          borderWidth: 1.5,
+          fill: false,
+          order: 2,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: "index", intersect: false },
+      scales: {
+        x: { ticks: { maxTicksLimit: 12 } },
+        y: { title: { display: true, text: "SEK/MWh" } },
+      },
+    },
+  });
+
   function update() {
     const { start, end, label: periodLabel, preposition, unit } = getPeriodSelection();
 
@@ -652,6 +734,23 @@ async function main() {
     const coalSeries = new Array(windResampled.values.length).fill(coalMW);
     const firmGenSeries = windResampled.values.map((v, i) => v + solarResampled.values[i] + baseloadMW);
 
+    // Each hour's price is the marginal cost of whichever source was needed last, in the same
+    // priority order as the dispatch model (base/wind/solar never set price; they're never last resort).
+    const marginalHydro = Number(costMarginalHydroInput.value);
+    const marginalGas = Number(costMarginalGasInput.value);
+    const marginalBattery = Number(costMarginalBatteryInput.value);
+    const marginalImport = Number(costMarginalImportInput.value);
+    const marginalSurplus = Number(costMarginalSurplusInput.value);
+    const priceSekMwh = importMW.map((importValue, i) => {
+      if (importValue > 0) return marginalImport;
+      if (gasGenMW[i] > 0) return marginalGas;
+      if (hydroGenMW[i] > 0) return marginalHydro;
+      if (batteryDischargeMW[i] > 0) return marginalBattery;
+      return marginalSurplus; // base + wind/solar alone covered demand (with or without curtailment)
+    });
+    const priceResampled = resample(wind.time, priceSekMwh, unit, start, end);
+    const histPriceResampled = resample(wind.time, historicalPriceSekMwh, unit, start, end);
+
     // Pick one unit per axis (MW/GW/TW...) based on the largest value currently shown on it.
     const yTier = unitTier(
       Math.max(
@@ -702,6 +801,11 @@ async function main() {
     chart.options.scales.y1.title.text = y1Unit;
     chart.options.scales.y1.max = batteryCapacityMWh / y1Tier.factor;
     chart.update("none");
+
+    priceChart.data.labels = priceResampled.labels;
+    priceChart.data.datasets[0].data = priceResampled.values;
+    priceChart.data.datasets[1].data = histPriceResampled.values;
+    priceChart.update("none");
 
     const windowHours = end - start;
     const unmetHours = unmet.slice(start, end).reduce((a, b) => a + b, 0);
@@ -820,6 +924,59 @@ async function main() {
     capBatteryUsageShare.textContent = `${usageSharePct(dischargeAvgMW).toFixed(0)}%`;
     capImportsUsageShare.textContent = `${usageSharePct(importAvgMW).toFixed(0)}%`;
 
+    // Operating cost & revenue: each source's actual generation over the window (including any
+    // curtailed/exported wind+solar+base, since that energy was still generated) times its own
+    // marginal cost; imports cost at the scarcity price, exports earn the hour's clearing price
+    // (always the surplus price, since exports only ever happen when nothing else was dispatched).
+    const marginalNuclear = Number(costMarginalNuclearInput.value);
+    const marginalCoal = Number(costMarginalCoalInput.value);
+    const marginalWind = Number(costMarginalWindInput.value);
+    const marginalSolar = Number(costMarginalSolarInput.value);
+    const nuclearOpCostSEK = nuclearMW * windowHours * marginalNuclear;
+    const coalOpCostSEK = coalMW * windowHours * marginalCoal;
+    const windOpCostSEK = windAvgMW * windowHours * marginalWind;
+    const solarOpCostSEK = solarAvgMW * windowHours * marginalSolar;
+    const hydroOpCostSEK = hydroAvgMW * windowHours * marginalHydro;
+    const gasOpCostSEK = gasAvgMW * windowHours * marginalGas;
+    const batteryOpCostSEK = dischargeAvgMW * windowHours * marginalBattery;
+    const importOpCostSEK = importAvgMW * windowHours * marginalImport;
+    const exportOpCostSEK = -(exportAvgMW * windowHours * marginalSurplus);
+    const totalOpCostSEK =
+      nuclearOpCostSEK +
+      coalOpCostSEK +
+      windOpCostSEK +
+      solarOpCostSEK +
+      hydroOpCostSEK +
+      gasOpCostSEK +
+      batteryOpCostSEK +
+      importOpCostSEK +
+      exportOpCostSEK;
+
+    opGenNuclear.textContent = formatQuantity(nuclearMW * windowHours, "MWh");
+    opCostNuclear.textContent = formatSEK(nuclearOpCostSEK);
+    opGenCoal.textContent = formatQuantity(coalMW * windowHours, "MWh");
+    opCostCoal.textContent = formatSEK(coalOpCostSEK);
+    opGenWind.textContent = formatQuantity(windAvgMW * windowHours, "MWh");
+    opCostWind.textContent = formatSEK(windOpCostSEK);
+    opGenSolar.textContent = formatQuantity(solarAvgMW * windowHours, "MWh");
+    opCostSolar.textContent = formatSEK(solarOpCostSEK);
+    opGenHydro.textContent = formatQuantity(hydroAvgMW * windowHours, "MWh");
+    opCostHydro.textContent = formatSEK(hydroOpCostSEK);
+    opGenGas.textContent = formatQuantity(gasAvgMW * windowHours, "MWh");
+    opCostGas.textContent = formatSEK(gasOpCostSEK);
+    opGenBattery.textContent = formatQuantity(dischargeAvgMW * windowHours, "MWh");
+    opCostBattery.textContent = formatSEK(batteryOpCostSEK);
+    opGenImport.textContent = formatQuantity(importAvgMW * windowHours, "MWh");
+    opCostImport.textContent = formatSEK(importOpCostSEK);
+    opGenExport.textContent = formatQuantity(exportAvgMW * windowHours, "MWh");
+    opCostExport.textContent = formatSEK(exportOpCostSEK);
+    opCostTotal.textContent = formatSEK(totalOpCostSEK);
+
+    const avgSimPriceMwh = priceSekMwh.slice(start, end).reduce((a, b) => a + b, 0) / windowHours;
+    const avgHistPriceMwh = historicalPriceSekMwh.slice(start, end).reduce((a, b) => a + b, 0) / windowHours;
+    avgSimPriceEl.textContent = `${avgSimPriceMwh.toFixed(0)} SEK/MWh`;
+    avgHistPriceEl.textContent = `${avgHistPriceMwh.toFixed(0)} SEK/MWh`;
+
     // Build cost: only capacity currently above each source's already-installed baseline counts,
     // computed from the slider's current position so lowering it back down reduces cost accordingly.
     const addedWindMW = Math.max(0, windCapacityMW - WIND_BASELINE_MW);
@@ -884,6 +1041,15 @@ async function main() {
   costHydroInput.addEventListener("input", update);
   costGasInput.addEventListener("input", update);
   costBatteryInput.addEventListener("input", update);
+  costMarginalNuclearInput.addEventListener("input", update);
+  costMarginalCoalInput.addEventListener("input", update);
+  costMarginalWindInput.addEventListener("input", update);
+  costMarginalSolarInput.addEventListener("input", update);
+  costMarginalHydroInput.addEventListener("input", update);
+  costMarginalGasInput.addEventListener("input", update);
+  costMarginalBatteryInput.addEventListener("input", update);
+  costMarginalImportInput.addEventListener("input", update);
+  costMarginalSurplusInput.addEventListener("input", update);
   rebuildWeekOptions();
   rebuildDayOptions();
   update();

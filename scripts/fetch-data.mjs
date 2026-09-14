@@ -63,6 +63,45 @@ async function fetchSolar() {
   };
 }
 
+// Real Swedish day-ahead spot prices (SE3 / Stockholm area) for every day of 2024, from the free
+// elprisetjustnu.se API (sourced from ENTSO-E). One request per day since the API has no year/month
+// endpoint. Timestamps come back in local CET/CEST; we convert to UTC to line up with the other data.
+const PRICE_AREA = "SE3";
+async function fetchElectricityPrices() {
+  const days = [];
+  const cursor = new Date(Date.UTC(2024, 0, 1));
+  while (cursor.getUTCFullYear() === 2024) {
+    days.push(
+      `${cursor.getUTCFullYear()}/${String(cursor.getUTCMonth() + 1).padStart(2, "0")}-${String(cursor.getUTCDate()).padStart(2, "0")}`
+    );
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+
+  const time = [];
+  const sekPerMWh = [];
+  for (const day of days) {
+    const url = `https://www.elprisetjustnu.se/api/v1/prices/${day}_${PRICE_AREA}.json`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error(`elprisetjustnu.se request failed for ${day}: ${res.status} ${res.statusText}`);
+    }
+    const hours = await res.json();
+    for (const hour of hours) {
+      const utcIso = new Date(hour.time_start).toISOString().slice(0, 16);
+      time.push(utcIso);
+      sekPerMWh.push(hour.SEK_per_kWh * 1000);
+    }
+  }
+
+  return {
+    site: "Stockholm / Södra Mellansverige (SE3), Sweden",
+    source: "elprisetjustnu.se (day-ahead spot price, sourced from ENTSO-E), excl. VAT/fees/taxes",
+    unit: "SEK/MWh",
+    time,
+    sekPerMWh,
+  };
+}
+
 
 // Deterministic pseudo-random noise so regenerating the file is reproducible.
 function seededNoise(seed) {
@@ -123,6 +162,14 @@ function generateDemand(timestamps) {
 async function main() {
   await mkdir(dataDir, { recursive: true });
   const demandOnly = process.argv.includes("--demand-only");
+  const pricesOnly = process.argv.includes("--prices-only");
+
+  if (pricesOnly) {
+    const prices = await fetchElectricityPrices();
+    await writeFile(path.join(dataDir, "price.json"), JSON.stringify(prices), "utf-8");
+    console.log(`Wrote data/price.json (${prices.time.length} hourly points)`);
+    return;
+  }
 
   let wind;
   if (demandOnly) {
@@ -146,6 +193,10 @@ async function main() {
       "utf-8"
     );
     console.log(`Wrote data/solar.json (${solar.time.length} hourly points)`);
+
+    const prices = await fetchElectricityPrices();
+    await writeFile(path.join(dataDir, "price.json"), JSON.stringify(prices), "utf-8");
+    console.log(`Wrote data/price.json (${prices.time.length} hourly points)`);
   }
 
   const demand = generateDemand(wind.time);
