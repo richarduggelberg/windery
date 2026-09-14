@@ -27,27 +27,29 @@ function dailyAverage(time, values) {
 }
 
 function runSimulation(windSpeed, demandMW, windCapacityMW, batteryCapacityMWh) {
-  let soc = 0;
-  let unmetHours = 0;
   const totalHours = windSpeed.length;
+  const supplyMW = new Array(totalHours);
+  let soc = batteryCapacityMWh; // batteries start fully charged
+  let unmetHours = 0;
 
   for (let i = 0; i < totalHours; i++) {
     const generation = windCapacityMW * windCapacityFactor(windSpeed[i]);
-    const net = generation - demandMW[i]; // MW over a 1-hour step == MWh
+    const demand = demandMW[i];
+    const net = generation - demand; // MW over a 1-hour step == MWh
     if (net >= 0) {
-      soc = Math.min(batteryCapacityMWh, soc + net);
+      const chargeRoom = batteryCapacityMWh - soc;
+      soc += Math.min(net, chargeRoom);
+      supplyMW[i] = demand; // surplus beyond battery headroom is curtailed
     } else {
       const deficit = -net;
-      if (soc >= deficit) {
-        soc -= deficit;
-      } else {
-        soc = 0;
-        unmetHours++;
-      }
+      const discharge = Math.min(deficit, soc);
+      soc -= discharge;
+      supplyMW[i] = generation + discharge;
+      if (supplyMW[i] < demand) unmetHours++;
     }
   }
 
-  return 1 - unmetHours / totalHours;
+  return { supplyMW, probability: 1 - unmetHours / totalHours };
 }
 
 async function loadJSON(path) {
@@ -62,8 +64,6 @@ async function main() {
     loadJSON("data/demand.json"),
   ]);
 
-  const capacityFactors = wind.windSpeed100m.map(windCapacityFactor);
-  const capacityFactorDaily = dailyAverage(wind.time, capacityFactors);
   const demandDaily = dailyAverage(demand.time, demand.demandMW);
 
   const windCapacityInput = document.getElementById("windCapacity");
@@ -72,14 +72,21 @@ async function main() {
   const batteryCapacityValue = document.getElementById("batteryCapacityValue");
   const probabilityEl = document.getElementById("probability");
 
+  const initialSupply = runSimulation(
+    wind.windSpeed100m,
+    demand.demandMW,
+    Number(windCapacityInput.value),
+    Number(batteryCapacityInput.value)
+  );
+
   const chart = new Chart(document.getElementById("combinedChart"), {
     type: "line",
     data: {
       labels: demandDaily.labels,
       datasets: [
         {
-          label: "Wind generation (MW)",
-          data: capacityFactorDaily.means.map((cf) => cf * Number(windCapacityInput.value)),
+          label: "Wind + battery supply (MW)",
+          data: dailyAverage(wind.time, initialSupply.supplyMW).means,
           borderColor: "#2b7a78",
           pointRadius: 0,
           borderWidth: 1.5,
@@ -109,15 +116,16 @@ async function main() {
     windCapacityValue.textContent = windCapacityMW.toLocaleString();
     batteryCapacityValue.textContent = batteryCapacityMWh.toLocaleString();
 
-    chart.data.datasets[0].data = capacityFactorDaily.means.map((cf) => cf * windCapacityMW);
-    chart.update("none");
-
-    const probability = runSimulation(
+    const { supplyMW, probability } = runSimulation(
       wind.windSpeed100m,
       demand.demandMW,
       windCapacityMW,
       batteryCapacityMWh
     );
+
+    chart.data.datasets[0].data = dailyAverage(wind.time, supplyMW).means;
+    chart.update("none");
+
     probabilityEl.textContent = `${(probability * 100).toFixed(1)}%`;
   }
 

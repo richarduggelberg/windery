@@ -13,13 +13,6 @@
   </header>
 
   <main>
-    <section class="charts">
-      <div class="chart-card">
-        <h2>Wind generation vs. electricity demand</h2>
-        <canvas id="combinedChart"></canvas>
-      </div>
-    </section>
-
     <section class="controls">
       <div class="control">
         <label for="windCapacity">Installed wind capacity: <span id="windCapacityValue"></span> MW</label>
@@ -31,11 +24,18 @@
       </div>
     </section>
 
+    <section class="charts">
+      <div class="chart-card">
+        <h2>Wind + battery supply vs. electricity demand</h2>
+        <canvas id="combinedChart"></canvas>
+      </div>
+    </section>
+
     <section class="result">
       <div class="probability-card">
         <span class="probability-label">Probability the combination meets demand</span>
         <span id="probability" class="probability-value">–</span>
-        <span class="probability-note">Share of the 8,784 hourly intervals in 2024 where wind generation plus battery discharge fully covers demand.</span>
+        <span class="probability-note">Share of the 8,784 hourly intervals in 2024 where wind generation plus battery discharge fully covers demand. Batteries start each year fully charged.</span>
       </div>
     </section>
 
