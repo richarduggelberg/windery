@@ -1,7 +1,7 @@
 // Fetches historical hourly wind speed for the site and writes it alongside
 // a synthetic Swedish-style demand profile for the same timeline.
 // Run with: node scripts/fetch-data.mjs
-import { writeFile, mkdir } from "node:fs/promises";
+import { writeFile, mkdir, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -63,7 +63,8 @@ function weeklyFactor(dayIndexContinuous) {
 }
 
 function generateDemand(timestamps) {
-  const BASE_LOAD_MW = 12000;
+  // Scaled to Sweden's nationwide electricity use (~140 TWh/year), not just one city/region.
+  const BASE_LOAD_MW = 17000;
   const dayMs = 24 * 60 * 60 * 1000;
   const startMs = Date.parse(timestamps[0] + "Z");
 
@@ -96,14 +97,21 @@ function generateDemand(timestamps) {
 
 async function main() {
   await mkdir(dataDir, { recursive: true });
+  const demandOnly = process.argv.includes("--demand-only");
 
-  const wind = await fetchWind();
-  await writeFile(
-    path.join(dataDir, "wind.json"),
-    JSON.stringify(wind),
-    "utf-8"
-  );
-  console.log(`Wrote data/wind.json (${wind.time.length} hourly points)`);
+  let wind;
+  if (demandOnly) {
+    wind = JSON.parse(await readFile(path.join(dataDir, "wind.json"), "utf-8"));
+    console.log("Reusing existing data/wind.json (--demand-only)");
+  } else {
+    wind = await fetchWind();
+    await writeFile(
+      path.join(dataDir, "wind.json"),
+      JSON.stringify(wind),
+      "utf-8"
+    );
+    console.log(`Wrote data/wind.json (${wind.time.length} hourly points)`);
+  }
 
   const demand = generateDemand(wind.time);
   await writeFile(

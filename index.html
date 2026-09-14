@@ -9,7 +9,7 @@
 <body>
   <header>
     <h1>Windery</h1>
-    <p class="subtitle">Simulating wind + battery vs. electricity demand — Stockholm, Sweden (2024, hourly)</p>
+    <p class="subtitle">Simulating wind + battery vs. electricity demand — Sweden (2024, hourly)</p>
   </header>
 
   <main>
@@ -25,19 +25,19 @@
       </div>
       <div class="control">
         <label for="windCapacity">Installed wind capacity: <span id="windCapacityValue"></span> MW</label>
-        <input type="range" id="windCapacity" min="0" max="90000" step="100" value="5000">
+        <input type="range" id="windCapacity" min="0" max="90000" step="100" value="19000">
       </div>
       <div class="control">
         <label for="batteryCapacity">Installed battery capacity: <span id="batteryCapacityValue"></span> MWh</label>
-        <input type="range" id="batteryCapacity" min="0" max="60000" step="100" value="2000">
+        <input type="range" id="batteryCapacity" min="0" max="60000" step="100" value="300">
       </div>
       <div class="control">
         <label for="baseloadCapacity">Installed base capacity (nuclear/coal): <span id="baseloadCapacityValue"></span> MW</label>
-        <input type="range" id="baseloadCapacity" min="0" max="20000" step="100" value="3000">
+        <input type="range" id="baseloadCapacity" min="0" max="20000" step="100" value="7000">
       </div>
       <div class="control">
         <label for="variableCapacity">Installed variable capacity (gas/hydro): <span id="variableCapacityValue"></span> MW</label>
-        <input type="range" id="variableCapacity" min="0" max="20000" step="100" value="5000">
+        <input type="range" id="variableCapacity" min="0" max="20000" step="100" value="16500">
       </div>
     </section>
 
@@ -57,9 +57,12 @@
     </section>
 
     <p class="disclaimer">
-      Wind speed data: Open-Meteo historical archive (ERA5) for Stockholm. Demand is a synthetic, illustrative profile
-      (not real metered data) with realistic daily/weekly/seasonal shape. Base capacity generates a constant output at
-      all times. Variable capacity dispatches to cover demand not met by wind, base capacity, and the battery, up to
+      Wind speed data: Open-Meteo historical archive (ERA5) for Stockholm, used as a proxy for Swedish wind conditions.
+      Demand is a synthetic, illustrative profile (not real metered data) scaled to Sweden's nationwide electricity use
+      (~140 TWh/year) with realistic daily/weekly/seasonal shape. Slider defaults approximate Sweden's installed
+      capacity as of 2025/2026: wind ~19 GW, nuclear ~7 GW, hydro ~16.5 GW, and a modest ~300 MWh of grid-scale
+      batteries (battery storage is still an emerging technology in Sweden). Base capacity generates a constant output
+      at all times. Variable capacity dispatches to cover demand not met by wind, base capacity, and the battery, up to
       its installed limit, and also tops up the battery with any spare capacity once demand is covered. Battery is
       modeled with unlimited charge/discharge power and a simple energy cap.
     </p>
