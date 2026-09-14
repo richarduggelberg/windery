@@ -12,6 +12,9 @@ const COAL_BASELINE_MW = 0;
 const HYDRO_BASELINE_MW = 16500;
 const GAS_BASELINE_MW = 0;
 
+// Battery slider moves through these discrete TWh notches (index-based) rather than a linear scale.
+const BATTERY_CAPACITY_STEPS_TWH = [0, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 150];
+
 function windCapacityFactor(speedMs) {
   if (speedMs < CUT_IN_MS || speedMs >= CUT_OUT_MS) return 0;
   if (speedMs >= RATED_MS) return 1;
@@ -434,8 +437,9 @@ async function main() {
     demandScaleValue.textContent = `${demandScalePercent}% (${formatQuantity(baseAnnualDemandMWh * demandFactor, "MWh")}/yr)`;
 
     const windCapacityMW = WIND_BASELINE_MW * (Number(windCapacityInput.value) / 100);
-    // Battery slider is in TWh (0.5 TWh increments); convert to MWh for the simulation.
-    const batteryCapacityMWh = Number(batteryCapacityInput.value) * 1e6;
+    // Battery slider moves through fixed TWh notches (index into BATTERY_CAPACITY_STEPS_TWH).
+    const batteryCapacityTWh = BATTERY_CAPACITY_STEPS_TWH[Number(batteryCapacityInput.value)];
+    const batteryCapacityMWh = batteryCapacityTWh * 1e6;
     // Nuclear/hydro sliders are % of baseline (non-zero defaults); coal/gas are absolute GW (zero default).
     const nuclearMW = NUCLEAR_BASELINE_MW * (Number(nuclearCapacityInput.value) / 100);
     const coalMW = Number(coalCapacityInput.value) * 1000;
@@ -639,7 +643,7 @@ async function main() {
     const addedCoalMW = Math.max(0, coalMW - COAL_BASELINE_MW);
     const addedHydroMW = Math.max(0, hydroMW - HYDRO_BASELINE_MW);
     const addedGasMW = Math.max(0, gasMW - GAS_BASELINE_MW);
-    const addedBatteryTWh = Number(batteryCapacityInput.value);
+    const addedBatteryTWh = batteryCapacityTWh;
 
     // Cost inputs are billion SEK per GW (generation) or per TWh (battery).
     const sekPerMW = (billionPerGW) => (Number(billionPerGW) * 1e9) / 1000;
