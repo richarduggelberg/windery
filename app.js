@@ -13,15 +13,6 @@ const COAL_BASELINE_MW = 0;
 const HYDRO_BASELINE_MW = 16500;
 const GAS_BASELINE_MW = 0;
 
-// Swedish hydro is inflow/reservoir-limited, not freely dispatchable like gas: nameplate capacity could
-// theoretically produce ~144 TWh/year (16.5 GW * 8760h), but actual "normal year" generation is only
-// ~65 TWh, because output is capped by how much water flows into reservoirs, not just turbine capacity.
-const HYDRO_ANNUAL_ENERGY_TWH_BASELINE = 65;
-const HYDRO_RESERVOIR_TWH_BASELINE = 34; // approx. total Swedish hydro reservoir storage capacity
-// Illustrative Swedish hydro inflow seasonality (snowmelt-driven spring peak, secondary autumn rain
-// bump, low winter inflow), as relative weights per calendar month; normalized to the annual energy total.
-const HYDRO_MONTHLY_INFLOW_WEIGHTS = [0.5, 0.45, 0.55, 1.6, 2.2, 1.7, 1.1, 0.9, 0.9, 1.0, 0.85, 0.6];
-
 // Battery slider moves through these discrete TWh notches (index-based) rather than a linear scale.
 const BATTERY_CAPACITY_STEPS_TWH = [0, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 150];
 
@@ -36,15 +27,6 @@ function windCapacityFactor(speedMs) {
 const SOLAR_RATED_WM2 = 1000;
 function solarCapacityFactor(irradianceWm2) {
   return Math.min(1, Math.max(0, irradianceWm2) / SOLAR_RATED_WM2);
-}
-
-// Builds an hourly reservoir-inflow series (MW, i.e. MWh over a 1-hour step) shaped by
-// HYDRO_MONTHLY_INFLOW_WEIGHTS, scaled so the full year sums to annualEnergyMWh.
-function hydroInflowSeries(time, annualEnergyMWh) {
-  const months = time.map((iso) => Number(iso.slice(5, 7)) - 1);
-  const totalWeight = months.reduce((sum, m) => sum + HYDRO_MONTHLY_INFLOW_WEIGHTS[m], 0);
-  const energyPerWeight = totalWeight > 0 ? annualEnergyMWh / totalWeight : 0;
-  return months.map((m) => HYDRO_MONTHLY_INFLOW_WEIGHTS[m] * energyPerWeight);
 }
 
 // Downsample a series to daily means for readable charts (data stays hourly for simulation).
@@ -150,8 +132,6 @@ function runSimulation(
   batteryCapacityMWh,
   baseloadMW,
   hydroCapacityMW,
-  hydroInflowMW,
-  hydroReservoirCapMWh,
   gasCapacityMW
 ) {
   const totalHours = windSpeed.length;
@@ -160,27 +140,20 @@ function runSimulation(
   const batteryDischargeMW = new Array(totalHours);
   const hydroGenMW = new Array(totalHours);
   const gasGenMW = new Array(totalHours);
-  const reservoirMWh = new Array(totalHours);
   const socMWh = new Array(totalHours);
   const unmet = new Uint8Array(totalHours);
   const exportMW = new Array(totalHours); // curtailed surplus beyond battery headroom
   const importMW = new Array(totalHours); // deficit left uncovered by base+wind+solar+battery+hydro+gas
   let soc = 0; // batteries start empty
-  // Reservoirs start roughly two-thirds full, a reasonable level for a Swedish hydro system heading
-  // into January after autumn rains, before the spring snowmelt refill and winter/spring drawdown.
-  let reservoir = hydroReservoirCapMWh * 0.65;
 
-  // Demand is met additively, in priority order: base, then wind+solar, then battery, then hydro
-  // (limited by its reservoir), then gas (last resort, freely dispatchable up to its own capacity).
+  // Demand is met additively, in priority order: base, then wind+solar, then battery, then hydro,
+  // then gas (both last-resort, freely dispatchable up to their own installed capacity).
   for (let i = 0; i < totalHours; i++) {
     const windGen = windCapacityMW * windCapacityFactor(windSpeed[i]);
     const solarGen = solarCapacityMW * solarCapacityFactor(solarIrradiance[i]);
     const firmGen = windGen + solarGen + baseloadMW; // base + wind + solar, none of it is dispatchable
     const demand = demandMW[i];
     const net = firmGen - demand; // MW over a 1-hour step == MWh
-
-    // Reservoirs refill from natural inflow regardless of demand; once full, extra inflow spills.
-    reservoir = Math.min(hydroReservoirCapMWh, reservoir + hydroInflowMW[i]);
 
     let discharge = 0;
     let hydroGen = 0;
@@ -201,12 +174,9 @@ function runSimulation(
       soc -= discharge;
       deficit -= discharge;
 
-      // Hydro is capped by both turbine capacity and available reservoir energy (its "fuel").
-      hydroGen = Math.min(deficit, hydroCapacityMW, reservoir);
-      reservoir -= hydroGen;
+      hydroGen = Math.min(deficit, hydroCapacityMW);
       deficit -= hydroGen;
 
-      // Gas is the true last resort: freely dispatchable up to its own capacity (fuel always available).
       gasGen = Math.min(deficit, gasCapacityMW);
       deficit -= gasGen;
       if (deficit > 0) {
@@ -219,7 +189,6 @@ function runSimulation(
     batteryDischargeMW[i] = discharge;
     hydroGenMW[i] = hydroGen;
     gasGenMW[i] = gasGen;
-    reservoirMWh[i] = reservoir;
     socMWh[i] = soc;
     exportMW[i] = curtailed;
     importMW[i] = unmetMW;
@@ -231,7 +200,6 @@ function runSimulation(
     batteryDischargeMW,
     hydroGenMW,
     gasGenMW,
-    reservoirMWh,
     socMWh,
     unmet,
     exportMW,
@@ -532,10 +500,6 @@ async function main() {
     const hydroMW = HYDRO_BASELINE_MW * (Number(hydroCapacityInput.value) / 100);
     const gasMW = Number(gasCapacityInput.value) * 1000;
     const baseloadMW = nuclearMW + coalMW;
-    // Hydro's reservoir/inflow scale with its capacity slider, same as the installed-MW baseline ratio.
-    const hydroReservoirCapMWh = HYDRO_RESERVOIR_TWH_BASELINE * 1e6 * (hydroMW / HYDRO_BASELINE_MW);
-    const hydroAnnualInflowMWh = HYDRO_ANNUAL_ENERGY_TWH_BASELINE * 1e6 * (hydroMW / HYDRO_BASELINE_MW);
-    const hydroInflowMW = hydroInflowSeries(wind.time, hydroAnnualInflowMWh);
     windCapacityValue.textContent = `${windCapacityInput.value}% (${formatQuantity(windCapacityMW, "MW")})`;
     solarCapacityValue.textContent = `${solarCapacityInput.value}% (${formatQuantity(solarCapacityMW, "MW")})`;
     batteryCapacityValue.textContent = formatQuantity(batteryCapacityMWh, "MWh");
@@ -552,7 +516,6 @@ async function main() {
       batteryDischargeMW,
       hydroGenMW,
       gasGenMW,
-      reservoirMWh,
       socMWh,
       unmet,
       exportMW,
@@ -566,8 +529,6 @@ async function main() {
       batteryCapacityMWh,
       baseloadMW,
       hydroMW,
-      hydroInflowMW,
-      hydroReservoirCapMWh,
       gasMW
     );
 
@@ -686,8 +647,8 @@ async function main() {
     capSolarShare.textContent = `${sharePct(solarCapacityMW).toFixed(0)}%`;
     capSolarUsed.textContent = `${usedPct(solarAvgMW, solarCapacityMW).toFixed(0)}%${exportedNote(solarExportAvgMW, solarCapacityMW)}`;
 
-    // Hydro's output is capped by its reservoir (see runSimulation), so its utilization can be well
-    // below 100% even at high demand; gas remains freely dispatchable up to its own capacity.
+    // Hydro and gas are both treated as last-resort dispatchable sources, freely usable up to their
+    // own installed capacity (no fuel/energy constraint modeled).
     const hydroAvgMW = windowAverage(hydroGenMW);
     const gasAvgMW = windowAverage(gasGenMW);
 
