@@ -50,6 +50,30 @@ function hourlyLabel(iso) {
   return iso.replace("T", " ");
 }
 
+// Picks the largest metric prefix (M, G, T, P) for which the value is still >= 1 of that unit.
+const UNIT_PREFIXES = ["M", "G", "T", "P"];
+function unitTier(maxAbsValue) {
+  let idx = 0;
+  let v = Math.abs(maxAbsValue);
+  while (v >= 1000 && idx < UNIT_PREFIXES.length - 1) {
+    v /= 1000;
+    idx++;
+  }
+  return { idx, factor: Math.pow(1000, idx) };
+}
+
+function scaledUnit(baseUnit, idx) {
+  return UNIT_PREFIXES[idx] + baseUnit.slice(1);
+}
+
+// Formats a value (in baseUnit, e.g. "MW"/"MWh") scaling up to GW/TW/etc. once it exceeds 1000 of the current unit.
+function formatQuantity(value, baseUnit) {
+  const { idx, factor } = unitTier(value);
+  const scaled = value / factor;
+  const decimals = idx === 0 ? 0 : scaled < 10 ? 2 : scaled < 100 ? 1 : 0;
+  return `${scaled.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })} ${scaledUnit(baseUnit, idx)}`;
+}
+
 function runSimulation(
   windSpeed,
   demandMW,
@@ -227,10 +251,10 @@ async function main() {
     const batteryCapacityMWh = Number(batteryCapacityInput.value);
     const baseloadMW = Number(baseloadCapacityInput.value);
     const variableCapacityMW = Number(variableCapacityInput.value);
-    windCapacityValue.textContent = windCapacityMW.toLocaleString();
-    batteryCapacityValue.textContent = batteryCapacityMWh.toLocaleString();
-    baseloadCapacityValue.textContent = baseloadMW.toLocaleString();
-    variableCapacityValue.textContent = variableCapacityMW.toLocaleString();
+    windCapacityValue.textContent = formatQuantity(windCapacityMW, "MW");
+    batteryCapacityValue.textContent = formatQuantity(batteryCapacityMWh, "MWh");
+    baseloadCapacityValue.textContent = formatQuantity(baseloadMW, "MW");
+    variableCapacityValue.textContent = formatQuantity(variableCapacityMW, "MW");
 
     // Always simulate the full year so battery state of charge carries over correctly,
     // then slice down to the selected window for display and the probability figure.
@@ -249,13 +273,28 @@ async function main() {
     const demandResampled = resample(demand.time, demand.demandMW, period, start, end);
     const baseloadSeries = new Array(genResampled.values.length).fill(baseloadMW);
 
+    // Pick one unit per axis (MW/GW/TW...) based on the largest value currently shown on it.
+    const yTier = unitTier(
+      Math.max(0, ...genResampled.values, ...baseloadSeries, ...variableResampled.values, ...demandResampled.values)
+    );
+    const yUnit = scaledUnit("MW", yTier.idx);
+    const y1Tier = unitTier(Math.max(batteryCapacityMWh, 0, ...socResampled.values));
+    const y1Unit = scaledUnit("MWh", y1Tier.idx);
+
     chart.data.labels = demandResampled.labels;
-    chart.data.datasets[0].data = genResampled.values;
-    chart.data.datasets[1].data = baseloadSeries;
-    chart.data.datasets[2].data = variableResampled.values;
-    chart.data.datasets[3].data = demandResampled.values;
-    chart.data.datasets[4].data = socResampled.values;
-    chart.options.scales.y1.max = batteryCapacityMWh;
+    chart.data.datasets[0].data = genResampled.values.map((v) => v / yTier.factor);
+    chart.data.datasets[0].label = `Wind generation (${yUnit})`;
+    chart.data.datasets[1].data = baseloadSeries.map((v) => v / yTier.factor);
+    chart.data.datasets[1].label = `Base generation (${yUnit})`;
+    chart.data.datasets[2].data = variableResampled.values.map((v) => v / yTier.factor);
+    chart.data.datasets[2].label = `Variable generation used (${yUnit})`;
+    chart.data.datasets[3].data = demandResampled.values.map((v) => v / yTier.factor);
+    chart.data.datasets[3].label = `Demand (${yUnit})`;
+    chart.data.datasets[4].data = socResampled.values.map((v) => v / y1Tier.factor);
+    chart.data.datasets[4].label = `Battery charge (${y1Unit})`;
+    chart.options.scales.y.title.text = yUnit;
+    chart.options.scales.y1.title.text = y1Unit;
+    chart.options.scales.y1.max = batteryCapacityMWh / y1Tier.factor;
     chart.update("none");
 
     const windowHours = end - start;
