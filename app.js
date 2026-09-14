@@ -26,8 +26,24 @@ function dailyAverage(time, values) {
   return { labels, means };
 }
 
+// Downsample a series to weekly (7-day) means, labeled by the first day of each week.
+function weeklyAverage(time, values) {
+  const buckets = new Map();
+  time.forEach((iso, i) => {
+    const dayIndex = Math.floor((Date.parse(iso + "Z") - Date.parse(time[0] + "Z")) / (24 * 60 * 60 * 1000));
+    const weekStart = Math.floor(dayIndex / 7) * 7;
+    if (!buckets.has(weekStart)) buckets.set(weekStart, { label: iso.slice(0, 10), values: [] });
+    buckets.get(weekStart).values.push(values[i]);
+  });
+  const entries = [...buckets.values()];
+  return {
+    labels: entries.map((e) => e.label),
+    means: entries.map((e) => e.values.reduce((a, b) => a + b, 0) / e.values.length),
+  };
+}
+
 const PERIODS = {
-  year: { label: "2024", preposition: "in", unit: "daily" },
+  year: { label: "2024", preposition: "in", unit: "weekly" },
   january: { label: "January 2024", preposition: "in", unit: "daily" },
   week1: { label: "the first week of January 2024", preposition: "in", unit: "hourly" },
   day1: { label: "January 1, 2024", preposition: "on", unit: "hourly" },
@@ -154,13 +170,17 @@ async function main() {
   // The fetched profile already represents Sweden's current nationwide demand; the slider scales it up/down from there.
   const baseAnnualDemandMWh = demand.demandMW.reduce((a, b) => a + b, 0);
 
-  // Resample a full-year series to the selected window, using hourly points for
-  // short windows and daily means for longer ones so the chart stays readable.
+  // Resample a full-year series to the selected window, using hourly points for short windows,
+  // daily means for medium windows, and weekly means for the full year so the chart stays readable.
   function resample(time, values, period, start, end) {
     const timeSlice = time.slice(start, end);
     const valueSlice = values.slice(start, end);
     if (PERIODS[period].unit === "hourly") {
       return { labels: timeSlice.map(hourlyLabel), values: valueSlice };
+    }
+    if (PERIODS[period].unit === "weekly") {
+      const { labels, means } = weeklyAverage(timeSlice, valueSlice);
+      return { labels, values: means };
     }
     const { labels, means } = dailyAverage(timeSlice, valueSlice);
     return { labels, values: means };
