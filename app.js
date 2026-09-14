@@ -283,7 +283,7 @@ async function main() {
       },
       scales: {
         x: { ticks: { maxTicksLimit: 12 } },
-        y: { stacked: true, title: { display: true, text: "MW" } },
+        y: { stacked: true, min: 0, title: { display: true, text: "MW" } },
         y1: {
           position: "right",
           title: { display: true, text: "MWh" },
