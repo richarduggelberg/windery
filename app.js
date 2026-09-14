@@ -142,7 +142,7 @@ function runSimulation(
   const unmet = new Uint8Array(totalHours);
   const exportMW = new Array(totalHours); // curtailed surplus beyond battery headroom
   const importMW = new Array(totalHours); // deficit left uncovered by base+wind+battery+variable
-  let soc = batteryCapacityMWh; // batteries start fully charged
+  let soc = 0; // batteries start empty
 
   // Demand is met additively, in priority order: base, then wind+solar, then battery, then variable (last resort).
   for (let i = 0; i < totalHours; i++) {
@@ -579,7 +579,7 @@ async function main() {
     probabilityEl.textContent = `${(probability * 100).toFixed(1)}%`;
     probabilityNoteEl.textContent =
       `Share of the ${windowHours.toLocaleString()} hourly intervals ${PERIODS[period].preposition} ${PERIODS[period].label} ` +
-      `where base, wind, solar, battery discharge, and variable generation together fully cover demand. Batteries start the year fully charged.`;
+      `where base, wind, solar, battery discharge, and variable generation together fully cover demand. Batteries start the year empty.`;
 
     // Installed mix: each source's share of total installed generation capacity (battery excluded, different unit).
     const totalInstalledMW = nuclearMW + coalMW + windCapacityMW + solarCapacityMW + hydroMW + gasMW;

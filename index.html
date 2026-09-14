@@ -50,6 +50,12 @@
       <div class="control">
         <label for="hydroCapacity">Installed hydro capacity: <span id="hydroCapacityValue"></span></label>
         <input type="range" id="hydroCapacity" min="0" max="200" step="10" value="100">
+        <p class="control-note">
+          Sweden's four largest untouched rivers (Torne, Kalix, Pite, and Vindel) are protected by law from
+          hydropower development, and most other rivers are already dammed. Realistic expansion beyond today's
+          ~16.5 GW is limited to uprating/upgrading existing plants — estimated at only a few GW, not the wide
+          range this slider allows.
+        </p>
       </div>
       <div class="control">
         <label for="gasCapacity">Installed gas capacity: <span id="gasCapacityValue"></span></label>
@@ -218,9 +224,13 @@
             <tr>
               <td>Hydro (variable)</td>
               <td>
-                <input type="number" id="costHydro" value="14" min="0" step="1"> billion SEK / GW
+                <input type="number" id="costHydro" value="45" min="0" step="1"> billion SEK / GW
               </td>
-              <td>LCOE, incl. grid connection</td>
+              <td>
+                Marginal cost of new/upgraded capacity, not the fleet-average cost of Sweden's existing (mostly
+                decades-old, already depreciated) dams. Remaining sites are remote, environmentally sensitive, and
+                require costly permitting and compensation, so new hydro is pricier than the installed base suggests.
+              </td>
             </tr>
             <tr>
               <td>Gas (variable)</td>
