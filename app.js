@@ -171,6 +171,17 @@ async function main() {
   const demandScaleValue = document.getElementById("demandScaleValue");
   const probabilityEl = document.getElementById("probability");
   const probabilityNoteEl = document.getElementById("probabilityNote");
+  const capBaseInstalled = document.getElementById("capBaseInstalled");
+  const capBaseShare = document.getElementById("capBaseShare");
+  const capBaseUsed = document.getElementById("capBaseUsed");
+  const capWindInstalled = document.getElementById("capWindInstalled");
+  const capWindShare = document.getElementById("capWindShare");
+  const capWindUsed = document.getElementById("capWindUsed");
+  const capVariableInstalled = document.getElementById("capVariableInstalled");
+  const capVariableShare = document.getElementById("capVariableShare");
+  const capVariableUsed = document.getElementById("capVariableUsed");
+  const capBatteryInstalled = document.getElementById("capBatteryInstalled");
+  const capBatteryUsed = document.getElementById("capBatteryUsed");
 
   // The fetched profile already represents Sweden's current nationwide demand; the slider scales it up/down from there.
   const baseAnnualDemandMWh = demand.demandMW.reduce((a, b) => a + b, 0);
@@ -415,6 +426,34 @@ async function main() {
     probabilityNoteEl.textContent =
       `Share of the ${windowHours.toLocaleString()} hourly intervals ${PERIODS[period].preposition} ${PERIODS[period].label} ` +
       `where base, wind, battery discharge, and variable generation together fully cover demand. Batteries start the year fully charged.`;
+
+    // Installed mix: each source's share of total installed generation capacity (battery excluded, different unit).
+    const totalInstalledMW = baseloadMW + windCapacityMW + variableCapacityMW;
+    const sharePct = (mw) => (totalInstalledMW > 0 ? (mw / totalInstalledMW) * 100 : 0);
+
+    // Utilization: average output over the displayed window as a share of that source's own installed capacity.
+    const windowAverage = (values) => values.slice(start, end).reduce((a, b) => a + b, 0) / windowHours;
+    const usedPct = (avgMW, installedMW) => (installedMW > 0 ? (avgMW / installedMW) * 100 : 0);
+
+    capBaseInstalled.textContent = formatQuantity(baseloadMW, "MW");
+    capBaseShare.textContent = `${sharePct(baseloadMW).toFixed(0)}%`;
+    capBaseUsed.textContent = `${baseloadMW > 0 ? "100" : "0"}%`;
+
+    const windAvgMW = windowAverage(windGenMW);
+    capWindInstalled.textContent = formatQuantity(windCapacityMW, "MW");
+    capWindShare.textContent = `${sharePct(windCapacityMW).toFixed(0)}%`;
+    capWindUsed.textContent = `${usedPct(windAvgMW, windCapacityMW).toFixed(0)}%`;
+
+    const variableAvgMW = windowAverage(variableGenMW);
+    capVariableInstalled.textContent = formatQuantity(variableCapacityMW, "MW");
+    capVariableShare.textContent = `${sharePct(variableCapacityMW).toFixed(0)}%`;
+    capVariableUsed.textContent = `${usedPct(variableAvgMW, variableCapacityMW).toFixed(0)}%`;
+
+    // Battery has no "installed mix" share (it stores energy rather than generating it); "used" is its
+    // average state of charge over the window, as a share of its own energy capacity.
+    const avgSocMWh = windowAverage(socMWh);
+    capBatteryInstalled.textContent = formatQuantity(batteryCapacityMWh, "MWh");
+    capBatteryUsed.textContent = `${usedPct(avgSocMWh, batteryCapacityMWh).toFixed(0)}% avg. charge`;
   }
 
   periodInput.addEventListener("change", update);

@@ -52,6 +52,48 @@
       </div>
     </section>
 
+    <section class="capacity-summary">
+      <div class="chart-card">
+        <h2>Installed vs. used capacity</h2>
+        <table id="capacityTable">
+          <thead>
+            <tr>
+              <th>Source</th>
+              <th>Installed capacity</th>
+              <th>Share of installed mix</th>
+              <th>Used (share of its own capacity)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Base (nuclear/coal)</td>
+              <td id="capBaseInstalled"></td>
+              <td id="capBaseShare"></td>
+              <td id="capBaseUsed"></td>
+            </tr>
+            <tr>
+              <td>Wind</td>
+              <td id="capWindInstalled"></td>
+              <td id="capWindShare"></td>
+              <td id="capWindUsed"></td>
+            </tr>
+            <tr>
+              <td>Variable (gas/hydro)</td>
+              <td id="capVariableInstalled"></td>
+              <td id="capVariableShare"></td>
+              <td id="capVariableUsed"></td>
+            </tr>
+            <tr>
+              <td>Battery (storage)</td>
+              <td id="capBatteryInstalled"></td>
+              <td>–</td>
+              <td id="capBatteryUsed"></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
     <section class="result">
       <div class="probability-card">
         <span class="probability-label">Probability the combination meets demand</span>
