@@ -244,10 +244,11 @@
           </tbody>
         </table>
         <p class="assumptions-note">
-          Not a real market simulation: each hour's price is estimated as the marginal cost of the most expensive
-          source needed that hour (see the price assumptions table below), following the same priority order as the
-          dispatch model — base and wind/solar never set the price since they're never the last resort; imports use
-          a scarcity price. Exports are valued at that same hour's price and shown as negative (revenue, not cost).
+          Not a real market simulation: each hour's price is the higher of the Nordic/European reference price and
+          the marginal cost of the most expensive source needed that hour (see the price assumptions table below),
+          following the same priority order as the dispatch model — base and wind/solar never set the price since
+          they're never the last resort; imports use a scarcity price. Exports are valued at that same hour's price
+          and shown as negative (revenue, not cost).
         </p>
       </div>
     </section>
@@ -373,6 +374,16 @@
               <td>Fuel + O&amp;M only (capital cost excluded; recovered separately, not via the spot price)</td>
             </tr>
             <tr>
+              <td>Nordic/European reference price</td>
+              <td><input type="number" id="costMarginalReference" value="400" step="10"> SEK/MWh</td>
+              <td>
+                Floor price for every non-scarcity hour. Sweden trades over interconnectors into a wider Nordic/
+                European market, so its price tracks that market's marginal cost (often gas/coal plants elsewhere)
+                even in hours when Swedish supply alone is cheap and plentiful — cheap domestic generation earns
+                this price rather than pulling it down to its own low cost.
+              </td>
+            </tr>
+            <tr>
               <td>Coal (base)</td>
               <td><input type="number" id="costMarginalCoal" value="700" step="10"> SEK/MWh</td>
               <td>Fuel + EU carbon allowance cost</td>
@@ -390,7 +401,10 @@
             <tr>
               <td>Hydro (variable)</td>
               <td><input type="number" id="costMarginalHydro" value="60" step="5"> SEK/MWh</td>
-              <td>Opportunity cost of stored water, not a fuel cost</td>
+              <td>
+                Domestic opportunity cost of stored water; the price actually paid is this or the reference price,
+                whichever is higher (see above)
+              </td>
             </tr>
             <tr>
               <td>Gas (variable)</td>
@@ -400,25 +414,23 @@
             <tr>
               <td>Battery discharge</td>
               <td><input type="number" id="costMarginalBattery" value="150" step="5"> SEK/MWh</td>
-              <td>Round-trip losses + degradation (proxy, not a fuel cost)</td>
+              <td>
+                Round-trip losses + degradation (proxy, not a fuel cost); the price actually paid is this or the
+                reference price, whichever is higher
+              </td>
             </tr>
             <tr>
               <td>Imports</td>
               <td><input type="number" id="costMarginalImport" value="1500" step="25"> SEK/MWh</td>
               <td>Scarcity price when even gas capacity is exhausted</td>
             </tr>
-            <tr>
-              <td>Surplus / renewables-saturated hours</td>
-              <td><input type="number" id="costMarginalSurplus" value="20" step="5"> SEK/MWh</td>
-              <td>Base + wind/solar alone cover demand; can be set negative like real oversupply hours</td>
-            </tr>
           </tbody>
         </table>
         <p class="assumptions-note">
           Illustrative, editable marginal (short-run operating) costs — different from the capital build costs above.
-          Each hour, the price is set to the marginal cost of whichever source was needed last, in the same priority
-          order as the dispatch model (see "Operating cost &amp; revenue" below). Educated-guess estimates, not
-          official figures.
+          Each hour, the price is the higher of the reference price and the marginal cost of whichever source was
+          needed last, in the same priority order as the dispatch model (see "Operating cost &amp; revenue" below).
+          Educated-guess estimates, not official figures.
         </p>
       </div>
     </section>

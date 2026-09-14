@@ -348,7 +348,7 @@ async function main() {
   const costMarginalGasInput = document.getElementById("costMarginalGas");
   const costMarginalBatteryInput = document.getElementById("costMarginalBattery");
   const costMarginalImportInput = document.getElementById("costMarginalImport");
-  const costMarginalSurplusInput = document.getElementById("costMarginalSurplus");
+  const costMarginalReferenceInput = document.getElementById("costMarginalReference");
   const avgSimPriceEl = document.getElementById("avgSimPrice");
   const avgHistPriceEl = document.getElementById("avgHistPrice");
   const opGenNuclear = document.getElementById("opGenNuclear");
@@ -744,19 +744,20 @@ async function main() {
     const coalSeries = new Array(windResampled.values.length).fill(coalMW);
     const firmGenSeries = windResampled.values.map((v, i) => v + solarResampled.values[i] + baseloadMW);
 
-    // Each hour's price is the marginal cost of whichever source was needed last, in the same
-    // priority order as the dispatch model (base/wind/solar never set price; they're never last resort).
-    const marginalHydro = Number(costMarginalHydroInput.value);
-    const marginalGas = Number(costMarginalGasInput.value);
-    const marginalBattery = Number(costMarginalBatteryInput.value);
-    const marginalImport = Number(costMarginalImportInput.value);
-    const marginalSurplus = Number(costMarginalSurplusInput.value);
+    // Each hour's price is the higher of the Nordic/European reference price (the floor set by the
+    // wider interconnected market, since Sweden trades across borders even when its own supply is cheap)
+    // and the marginal cost of whichever source was needed last, in the same priority order as dispatch.
+    const marginalReference = Number(costMarginalReferenceInput.value);
+    const effectiveHydro = Math.max(marginalReference, Number(costMarginalHydroInput.value));
+    const effectiveGas = Math.max(marginalReference, Number(costMarginalGasInput.value));
+    const effectiveBattery = Math.max(marginalReference, Number(costMarginalBatteryInput.value));
+    const effectiveImport = Math.max(marginalReference, Number(costMarginalImportInput.value));
     const priceSekMwh = importMW.map((importValue, i) => {
-      if (importValue > 0) return marginalImport;
-      if (gasGenMW[i] > 0) return marginalGas;
-      if (hydroGenMW[i] > 0) return marginalHydro;
-      if (batteryDischargeMW[i] > 0) return marginalBattery;
-      return marginalSurplus; // base + wind/solar alone covered demand (with or without curtailment)
+      if (importValue > 0) return effectiveImport;
+      if (gasGenMW[i] > 0) return effectiveGas;
+      if (hydroGenMW[i] > 0) return effectiveHydro;
+      if (batteryDischargeMW[i] > 0) return effectiveBattery;
+      return marginalReference; // base + wind/solar alone covered demand (with or without curtailment)
     });
     const priceResampled = resample(wind.time, priceSekMwh, unit, start, end);
     const histPriceResampled = resample(wind.time, historicalPriceSekMwh, unit, start, end);
@@ -935,9 +936,9 @@ async function main() {
     capImportsUsageShare.textContent = `${usageSharePct(importAvgMW).toFixed(0)}%`;
 
     // Operating cost & revenue: each source's actual generation over the window (including any
-    // curtailed/exported wind+solar+base, since that energy was still generated) times its own
-    // marginal cost; imports cost at the scarcity price, exports earn the hour's clearing price
-    // (always the surplus price, since exports only ever happen when nothing else was dispatched).
+    // curtailed/exported wind+solar+base, since that energy was still generated) times what it's
+    // actually paid — its own fuel cost for baseload/renewables, or the reference-floored market price
+    // for flexible/traded sources (hydro/gas/battery/imports/exports), matching the hourly price formula.
     const marginalNuclear = Number(costMarginalNuclearInput.value);
     const marginalCoal = Number(costMarginalCoalInput.value);
     const marginalWind = Number(costMarginalWindInput.value);
@@ -946,11 +947,11 @@ async function main() {
     const coalOpCostSEK = coalMW * windowHours * marginalCoal;
     const windOpCostSEK = windAvgMW * windowHours * marginalWind;
     const solarOpCostSEK = solarAvgMW * windowHours * marginalSolar;
-    const hydroOpCostSEK = hydroAvgMW * windowHours * marginalHydro;
-    const gasOpCostSEK = gasAvgMW * windowHours * marginalGas;
-    const batteryOpCostSEK = dischargeAvgMW * windowHours * marginalBattery;
-    const importOpCostSEK = importAvgMW * windowHours * marginalImport;
-    const exportOpCostSEK = -(exportAvgMW * windowHours * marginalSurplus);
+    const hydroOpCostSEK = hydroAvgMW * windowHours * effectiveHydro;
+    const gasOpCostSEK = gasAvgMW * windowHours * effectiveGas;
+    const batteryOpCostSEK = dischargeAvgMW * windowHours * effectiveBattery;
+    const importOpCostSEK = importAvgMW * windowHours * effectiveImport;
+    const exportOpCostSEK = -(exportAvgMW * windowHours * marginalReference);
     const totalOpCostSEK =
       nuclearOpCostSEK +
       coalOpCostSEK +
@@ -1059,7 +1060,7 @@ async function main() {
   costMarginalGasInput.addEventListener("input", update);
   costMarginalBatteryInput.addEventListener("input", update);
   costMarginalImportInput.addEventListener("input", update);
-  costMarginalSurplusInput.addEventListener("input", update);
+  costMarginalReferenceInput.addEventListener("input", update);
   rebuildWeekOptions();
   rebuildDayOptions();
   update();
