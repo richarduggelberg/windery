@@ -64,6 +64,12 @@ h1 {
   width: 100%;
 }
 
+.control select {
+  width: 100%;
+  padding: 0.4rem;
+  font: inherit;
+}
+
 .result {
   display: flex;
   justify-content: center;

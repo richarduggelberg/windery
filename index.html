@@ -15,6 +15,15 @@
   <main>
     <section class="controls">
       <div class="control">
+        <label for="period">Time interval</label>
+        <select id="period">
+          <option value="year" selected>Full year (2024)</option>
+          <option value="january">January</option>
+          <option value="week1">First week of January</option>
+          <option value="day1">First day of the year</option>
+        </select>
+      </div>
+      <div class="control">
         <label for="windCapacity">Installed wind capacity: <span id="windCapacityValue"></span> MW</label>
         <input type="range" id="windCapacity" min="0" max="90000" step="100" value="5000">
       </div>
@@ -35,7 +44,7 @@
       <div class="probability-card">
         <span class="probability-label">Probability the combination meets demand</span>
         <span id="probability" class="probability-value">–</span>
-        <span class="probability-note">Share of the 8,784 hourly intervals in 2024 where wind generation plus battery discharge fully covers demand. Batteries start each year fully charged.</span>
+        <span id="probabilityNote" class="probability-note"></span>
       </div>
     </section>
 
