@@ -128,6 +128,10 @@ h1 {
   margin: 0.4rem 0 0;
 }
 
+.hidden {
+  display: none;
+}
+
 .result {
   display: flex;
   justify-content: center;

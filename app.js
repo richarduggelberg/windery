@@ -61,24 +61,48 @@ function halfWeekAverage(time, values) {
   };
 }
 
-const PERIODS = {
-  year: { label: "2024", preposition: "in", unit: "halfWeekly" },
-  january: { label: "January 2024", preposition: "in", unit: "daily" },
-  week1: { label: "the first week of January 2024", preposition: "in", unit: "hourly" },
-  day1: { label: "January 1, 2024", preposition: "on", unit: "hourly" },
-};
+const SIM_YEAR = 2024;
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
 
-// Data starts at hour 0 of Jan 1, so each period is just a slice of the first N hours/days.
-function periodIndexRange(time, period) {
-  const year = time[0].slice(0, 4);
-  if (period === "january") {
-    let end = time.findIndex((t) => !t.startsWith(`${year}-01`));
-    if (end === -1) end = time.length;
-    return [0, end];
+function dateUTC(month, day) {
+  return new Date(Date.UTC(SIM_YEAR, month - 1, day));
+}
+
+function daysInMonth(month) {
+  return new Date(Date.UTC(SIM_YEAR, month, 0)).getUTCDate();
+}
+
+function addDays(date, days) {
+  return new Date(date.getTime() + days * 86400000);
+}
+
+// Hours elapsed since Jan 1 00:00, i.e. the index into the hourly data arrays.
+function hourIndexForDate(date) {
+  return Math.round((date.getTime() - dateUTC(1, 1).getTime()) / 3600000);
+}
+
+function formatShortDate(date) {
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+}
+
+function formatWeekdayDate(date) {
+  return date.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric", timeZone: "UTC" });
+}
+
+// Weeks within a month start every 7 days from day 1; the last week's end date can spill into
+// the next month (or, for December, the next year) since months aren't a multiple of 7 days.
+function weeksInMonth(month) {
+  const numDays = daysInMonth(month);
+  const weeks = [];
+  for (let startDay = 1, weekNum = 1; startDay <= numDays; startDay += 7, weekNum++) {
+    const start = dateUTC(month, startDay);
+    const end = addDays(start, 6);
+    weeks.push({ weekNum, start, end });
   }
-  if (period === "week1") return [0, Math.min(7 * 24, time.length)];
-  if (period === "day1") return [0, Math.min(24, time.length)];
-  return [0, time.length];
+  return weeks;
 }
 
 function hourlyLabel(iso) {
@@ -220,7 +244,11 @@ async function main() {
     loadJSON("data/demand.json"),
   ]);
 
-  const periodInput = document.getElementById("period");
+  const periodMonthInput = document.getElementById("periodMonth");
+  const periodWeekInput = document.getElementById("periodWeek");
+  const periodDayInput = document.getElementById("periodDay");
+  const periodWeekControl = document.getElementById("periodWeekControl");
+  const periodDayControl = document.getElementById("periodDayControl");
   const demandScaleInput = document.getElementById("demandScale");
   const windCapacityInput = document.getElementById("windCapacity");
   const solarCapacityInput = document.getElementById("solarCapacity");
@@ -300,15 +328,97 @@ async function main() {
   // The fetched profile already represents Sweden's current nationwide demand; the slider scales it up/down from there.
   const baseAnnualDemandMWh = demand.demandMW.reduce((a, b) => a + b, 0);
 
+  // Populates the week dropdown for the currently selected month (or hides it for "Full year").
+  function rebuildWeekOptions() {
+    if (periodMonthInput.value === "year") {
+      periodWeekControl.classList.add("hidden");
+      periodWeekInput.innerHTML = '<option value="whole" selected>Whole month</option>';
+      return;
+    }
+    periodWeekControl.classList.remove("hidden");
+    const month = Number(periodMonthInput.value);
+    const weekOptions = weeksInMonth(month)
+      .map(
+        (week) =>
+          `<option value="${week.weekNum}">Week ${week.weekNum} (${formatShortDate(week.start)} \u2013 ${formatShortDate(week.end)})</option>`
+      )
+      .join("");
+    periodWeekInput.innerHTML = `<option value="whole" selected>Whole month</option>${weekOptions}`;
+  }
+
+  // Populates the day dropdown for the currently selected week (or hides it for "Whole month"/"Whole year").
+  function rebuildDayOptions() {
+    if (periodMonthInput.value === "year" || periodWeekInput.value === "whole") {
+      periodDayControl.classList.add("hidden");
+      periodDayInput.innerHTML = '<option value="whole" selected>Whole week</option>';
+      return;
+    }
+    periodDayControl.classList.remove("hidden");
+    const month = Number(periodMonthInput.value);
+    const week = weeksInMonth(month)[Number(periodWeekInput.value) - 1];
+    const dayOptions = Array.from({ length: 7 }, (_, i) => addDays(week.start, i))
+      .map((day, i) => `<option value="${i}">${formatWeekdayDate(day)}</option>`)
+      .join("");
+    periodDayInput.innerHTML = `<option value="whole" selected>Whole week</option>${dayOptions}`;
+  }
+
+  // Translates the month/week/day dropdowns into an hourly index range plus a display label,
+  // choosing chart granularity (hourly/daily/half-weekly) based on the span selected.
+  function getPeriodSelection() {
+    const totalHours = wind.time.length;
+    let rawStart;
+    let rawEnd;
+    let label;
+    let preposition;
+    let unit;
+    if (periodMonthInput.value === "year") {
+      rawStart = 0;
+      rawEnd = totalHours;
+      label = `${SIM_YEAR}`;
+      preposition = "in";
+      unit = "halfWeekly";
+    } else {
+      const month = Number(periodMonthInput.value);
+      if (periodWeekInput.value === "whole") {
+        rawStart = hourIndexForDate(dateUTC(month, 1));
+        rawEnd = hourIndexForDate(dateUTC(month, daysInMonth(month))) + 24;
+        label = `${MONTH_NAMES[month - 1]} ${SIM_YEAR}`;
+        preposition = "in";
+        unit = "daily";
+      } else {
+        const week = weeksInMonth(month)[Number(periodWeekInput.value) - 1];
+        if (periodDayInput.value === "whole") {
+          rawStart = hourIndexForDate(week.start);
+          rawEnd = hourIndexForDate(week.end) + 24;
+          label = `${formatShortDate(week.start)}\u2013${formatShortDate(week.end)}, ${SIM_YEAR}`;
+          preposition = "in the week of";
+          unit = "hourly";
+        } else {
+          const day = addDays(week.start, Number(periodDayInput.value));
+          rawStart = hourIndexForDate(day);
+          rawEnd = rawStart + 24;
+          label = formatWeekdayDate(day);
+          preposition = "on";
+          unit = "hourly";
+        }
+      }
+    }
+    // Weeks/days near year-end can nominally spill past Dec 31 (into data the 2024 dataset doesn't have);
+    // clamp to the available range so there's always at least one hour to show.
+    const start = Math.min(Math.max(rawStart, 0), totalHours - 1);
+    const end = Math.min(Math.max(rawEnd, start + 1), totalHours);
+    return { start, end, label, preposition, unit };
+  }
+
   // Resample a full-year series to the selected window, using hourly points for short windows,
   // daily means for medium windows, and half-week means for the full year so the chart stays readable.
-  function resample(time, values, period, start, end) {
+  function resample(time, values, unit, start, end) {
     const timeSlice = time.slice(start, end);
     const valueSlice = values.slice(start, end);
-    if (PERIODS[period].unit === "hourly") {
+    if (unit === "hourly") {
       return { labels: timeSlice.map(hourlyLabel), values: valueSlice };
     }
-    if (PERIODS[period].unit === "halfWeekly") {
+    if (unit === "halfWeekly") {
       const { labels, means } = halfWeekAverage(timeSlice, valueSlice);
       return { labels, values: means };
     }
@@ -481,8 +591,7 @@ async function main() {
   });
 
   function update() {
-    const period = periodInput.value;
-    const [start, end] = periodIndexRange(wind.time, period);
+    const { start, end, label: periodLabel, preposition, unit } = getPeriodSelection();
 
     const demandScalePercent = Number(demandScaleInput.value);
     const demandFactor = demandScalePercent / 100;
@@ -532,13 +641,13 @@ async function main() {
       gasMW
     );
 
-    const windResampled = resample(wind.time, windGenMW, period, start, end);
-    const solarResampled = resample(wind.time, solarGenMW, period, start, end);
-    const dischargeResampled = resample(wind.time, batteryDischargeMW, period, start, end);
-    const hydroResampled = resample(wind.time, hydroGenMW, period, start, end);
-    const gasResampled = resample(wind.time, gasGenMW, period, start, end);
-    const socResampled = resample(wind.time, socMWh, period, start, end);
-    const demandResampled = resample(demand.time, scaledDemandMW, period, start, end);
+    const windResampled = resample(wind.time, windGenMW, unit, start, end);
+    const solarResampled = resample(wind.time, solarGenMW, unit, start, end);
+    const dischargeResampled = resample(wind.time, batteryDischargeMW, unit, start, end);
+    const hydroResampled = resample(wind.time, hydroGenMW, unit, start, end);
+    const gasResampled = resample(wind.time, gasGenMW, unit, start, end);
+    const socResampled = resample(wind.time, socMWh, unit, start, end);
+    const demandResampled = resample(demand.time, scaledDemandMW, unit, start, end);
     const nuclearSeries = new Array(windResampled.values.length).fill(nuclearMW);
     const coalSeries = new Array(windResampled.values.length).fill(coalMW);
     const firmGenSeries = windResampled.values.map((v, i) => v + solarResampled.values[i] + baseloadMW);
@@ -599,7 +708,7 @@ async function main() {
     const probability = 1 - unmetHours / windowHours;
     probabilityEl.textContent = `${(probability * 100).toFixed(1)}%`;
     probabilityNoteEl.textContent =
-      `Share of the ${windowHours.toLocaleString()} hourly intervals ${PERIODS[period].preposition} ${PERIODS[period].label} ` +
+      `Share of the ${windowHours.toLocaleString()} hourly intervals ${preposition} ${periodLabel} ` +
       `where base, wind, solar, battery discharge, and hydro/gas generation together fully cover demand. Batteries start the year empty.`;
 
     // Installed mix: each source's share of total installed generation capacity (battery excluded, different unit).
@@ -750,7 +859,16 @@ async function main() {
     costSekTotal.textContent = formatSEK(totalCostSEK);
   }
 
-  periodInput.addEventListener("change", update);
+  periodMonthInput.addEventListener("change", () => {
+    rebuildWeekOptions();
+    rebuildDayOptions();
+    update();
+  });
+  periodWeekInput.addEventListener("change", () => {
+    rebuildDayOptions();
+    update();
+  });
+  periodDayInput.addEventListener("change", update);
   demandScaleInput.addEventListener("input", update);
   windCapacityInput.addEventListener("input", update);
   solarCapacityInput.addEventListener("input", update);
@@ -766,6 +884,8 @@ async function main() {
   costHydroInput.addEventListener("input", update);
   costGasInput.addEventListener("input", update);
   costBatteryInput.addEventListener("input", update);
+  rebuildWeekOptions();
+  rebuildDayOptions();
   update();
 }
 
