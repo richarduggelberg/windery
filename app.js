@@ -83,54 +83,46 @@ function runSimulation(
   variableCapacityMW
 ) {
   const totalHours = windSpeed.length;
-  const generationMW = new Array(totalHours);
+  const windGenMW = new Array(totalHours);
+  const batteryDischargeMW = new Array(totalHours);
   const variableGenMW = new Array(totalHours);
   const socMWh = new Array(totalHours);
   const unmet = new Uint8Array(totalHours);
   let soc = batteryCapacityMWh; // batteries start fully charged
 
+  // Demand is met additively, in priority order: base, then wind, then battery, then variable (last resort).
   for (let i = 0; i < totalHours; i++) {
     const windGen = windCapacityMW * windCapacityFactor(windSpeed[i]);
-    const generation = windGen + baseloadMW; // baseload runs constantly
+    const firmGen = windGen + baseloadMW; // base + wind, neither is dispatchable
     const demand = demandMW[i];
-    const net = generation - demand; // MW over a 1-hour step == MWh
+    const net = firmGen - demand; // MW over a 1-hour step == MWh
+    let discharge = 0;
     let variableGen = 0;
 
     if (net >= 0) {
-      // Surplus wind + base generation charges the battery first.
+      // Surplus base + wind generation charges the battery; variable capacity never charges it.
       const surplus = net;
       const chargeFromSurplus = Math.min(surplus, batteryCapacityMWh - soc);
       soc += chargeFromSurplus;
-
-      // Any remaining battery headroom is topped up by idle variable capacity.
-      const chargeRoom = batteryCapacityMWh - soc;
-      const chargeFromVariable = Math.min(chargeRoom, variableCapacityMW);
-      soc += chargeFromVariable;
-      variableGen = chargeFromVariable;
+      // Any surplus beyond battery headroom is curtailed/exported (not modeled further).
     } else {
       let deficit = -net;
-      const discharge = Math.min(deficit, soc);
+      discharge = Math.min(deficit, soc);
       soc -= discharge;
       deficit -= discharge;
 
-      // Dispatchable gas/hydro is the last resort, covering only what wind + base + battery couldn't.
-      const coverDeficit = Math.min(deficit, variableCapacityMW);
-      deficit -= coverDeficit;
+      // Dispatchable gas/hydro is the last resort, covering only what base + wind + battery couldn't.
+      variableGen = Math.min(deficit, variableCapacityMW);
+      deficit -= variableGen;
       if (deficit > 0) unmet[i] = 1;
-
-      // Any leftover variable capacity charges the battery if it still has room.
-      const leftoverVariableCap = variableCapacityMW - coverDeficit;
-      const chargeRoom = batteryCapacityMWh - soc;
-      const chargeFromVariable = Math.min(leftoverVariableCap, chargeRoom);
-      soc += chargeFromVariable;
-      variableGen = coverDeficit + chargeFromVariable;
     }
-    generationMW[i] = windGen;
+    windGenMW[i] = windGen;
+    batteryDischargeMW[i] = discharge;
     variableGenMW[i] = variableGen;
     socMWh[i] = soc;
   }
 
-  return { generationMW, variableGenMW, socMWh, unmet };
+  return { windGenMW, batteryDischargeMW, variableGenMW, socMWh, unmet };
 }
 
 async function loadJSON(path) {
@@ -180,54 +172,115 @@ async function main() {
       labels: [],
       datasets: [
         {
-          label: "Wind generation (MW)",
-          data: [],
-          borderColor: "#2b7a78",
-          pointRadius: 0,
-          borderWidth: 1.5,
-          yAxisID: "y",
-        },
-        {
           label: "Base generation (MW)",
           data: [],
           borderColor: "#7a5c2b",
-          borderDash: [4, 3],
+          backgroundColor: "rgba(122, 92, 43, 0.35)",
           pointRadius: 0,
           borderWidth: 1.5,
           yAxisID: "y",
+          stack: "gen",
+          fill: "origin",
+          order: 1,
+        },
+        {
+          label: "Wind generation (MW)",
+          data: [],
+          borderColor: "#2b7a78",
+          backgroundColor: "rgba(43, 122, 120, 0.35)",
+          pointRadius: 0,
+          borderWidth: 1.5,
+          yAxisID: "y",
+          stack: "gen",
+          fill: "-1",
+          order: 2,
+        },
+        {
+          label: "Battery discharge used (MW)",
+          data: [],
+          borderColor: "#5b7fd6",
+          backgroundColor: "rgba(91, 127, 214, 0.35)",
+          pointRadius: 0,
+          borderWidth: 1.5,
+          yAxisID: "y",
+          stack: "gen",
+          fill: "-1",
+          order: 3,
         },
         {
           label: "Variable generation used (MW)",
           data: [],
           borderColor: "#e0a458",
+          backgroundColor: "rgba(224, 164, 88, 0.35)",
           pointRadius: 0,
           borderWidth: 1.5,
           yAxisID: "y",
+          stack: "gen",
+          fill: "-1",
+          order: 4,
+        },
+        {
+          // Invisible; only exists as a fill target so the gap dataset can shade base+wind vs demand.
+          label: "Base + wind (firm generation)",
+          data: [],
+          borderWidth: 0,
+          pointRadius: 0,
+          borderColor: "transparent",
+          backgroundColor: "transparent",
+          yAxisID: "y",
+          fill: false,
+          order: 5,
+          hideInLegend: true,
+        },
+        {
+          // Shades the gap between firm (base+wind) generation and demand: red where demand isn't
+          // met by base+wind alone (battery/variable had to help), green where there's a surplus.
+          label: "Surplus / shortfall vs. demand",
+          data: [],
+          borderWidth: 0,
+          pointRadius: 0,
+          borderColor: "transparent",
+          yAxisID: "y",
+          fill: { target: 4 },
+          order: 6,
+          hideInLegend: true,
         },
         {
           label: "Demand (MW)",
           data: [],
           borderColor: "#c44536",
           pointRadius: 0,
-          borderWidth: 1.5,
+          borderWidth: 2,
           yAxisID: "y",
+          fill: false,
+          order: 7,
         },
         {
           label: "Battery charge (MWh)",
           data: [],
           borderColor: "#5b7fd6",
+          borderDash: [4, 3],
           pointRadius: 0,
           borderWidth: 1.5,
           yAxisID: "y1",
+          fill: false,
+          order: 8,
         },
       ],
     },
     options: {
       responsive: true,
       interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: {
+          labels: {
+            filter: (item, data) => !data.datasets[item.datasetIndex].hideInLegend,
+          },
+        },
+      },
       scales: {
         x: { ticks: { maxTicksLimit: 12 } },
-        y: { title: { display: true, text: "MW" } },
+        y: { stacked: true, title: { display: true, text: "MW" } },
         y1: {
           position: "right",
           title: { display: true, text: "MWh" },
@@ -268,7 +321,7 @@ async function main() {
 
     // Always simulate the full year so battery state of charge carries over correctly,
     // then slice down to the selected window for display and the probability figure.
-    const { generationMW, variableGenMW, socMWh, unmet } = runSimulation(
+    const { windGenMW, batteryDischargeMW, variableGenMW, socMWh, unmet } = runSimulation(
       wind.windSpeed100m,
       scaledDemandMW,
       windCapacityMW,
@@ -277,31 +330,51 @@ async function main() {
       variableCapacityMW
     );
 
-    const genResampled = resample(wind.time, generationMW, period, start, end);
+    const windResampled = resample(wind.time, windGenMW, period, start, end);
+    const dischargeResampled = resample(wind.time, batteryDischargeMW, period, start, end);
     const variableResampled = resample(wind.time, variableGenMW, period, start, end);
     const socResampled = resample(wind.time, socMWh, period, start, end);
     const demandResampled = resample(demand.time, scaledDemandMW, period, start, end);
-    const baseloadSeries = new Array(genResampled.values.length).fill(baseloadMW);
+    const baseloadSeries = new Array(windResampled.values.length).fill(baseloadMW);
+    const firmGenSeries = windResampled.values.map((v) => v + baseloadMW);
 
     // Pick one unit per axis (MW/GW/TW...) based on the largest value currently shown on it.
     const yTier = unitTier(
-      Math.max(0, ...genResampled.values, ...baseloadSeries, ...variableResampled.values, ...demandResampled.values)
+      Math.max(
+        0,
+        ...windResampled.values,
+        ...baseloadSeries,
+        ...dischargeResampled.values,
+        ...variableResampled.values,
+        ...demandResampled.values
+      )
     );
     const yUnit = scaledUnit("MW", yTier.idx);
     const y1Tier = unitTier(Math.max(batteryCapacityMWh, 0, ...socResampled.values));
     const y1Unit = scaledUnit("MWh", y1Tier.idx);
 
+    // Red where base + wind alone fall short of demand (battery/variable had to cover the rest),
+    // green where base + wind exceed demand (surplus charges the battery or is exported).
+    const gapColors = firmGenSeries.map((firmGen, i) =>
+      firmGen < demandResampled.values[i] ? "rgba(196, 69, 54, 0.25)" : "rgba(76, 154, 90, 0.25)"
+    );
+
     chart.data.labels = demandResampled.labels;
-    chart.data.datasets[0].data = genResampled.values.map((v) => v / yTier.factor);
-    chart.data.datasets[0].label = `Wind generation (${yUnit})`;
-    chart.data.datasets[1].data = baseloadSeries.map((v) => v / yTier.factor);
-    chart.data.datasets[1].label = `Base generation (${yUnit})`;
-    chart.data.datasets[2].data = variableResampled.values.map((v) => v / yTier.factor);
-    chart.data.datasets[2].label = `Variable generation used (${yUnit})`;
-    chart.data.datasets[3].data = demandResampled.values.map((v) => v / yTier.factor);
-    chart.data.datasets[3].label = `Demand (${yUnit})`;
-    chart.data.datasets[4].data = socResampled.values.map((v) => v / y1Tier.factor);
-    chart.data.datasets[4].label = `Battery charge (${y1Unit})`;
+    chart.data.datasets[0].data = baseloadSeries.map((v) => v / yTier.factor);
+    chart.data.datasets[0].label = `Base generation (${yUnit})`;
+    chart.data.datasets[1].data = windResampled.values.map((v) => v / yTier.factor);
+    chart.data.datasets[1].label = `Wind generation (${yUnit})`;
+    chart.data.datasets[2].data = dischargeResampled.values.map((v) => v / yTier.factor);
+    chart.data.datasets[2].label = `Battery discharge used (${yUnit})`;
+    chart.data.datasets[3].data = variableResampled.values.map((v) => v / yTier.factor);
+    chart.data.datasets[3].label = `Variable generation used (${yUnit})`;
+    chart.data.datasets[4].data = firmGenSeries.map((v) => v / yTier.factor);
+    chart.data.datasets[5].data = demandResampled.values.map((v) => v / yTier.factor);
+    chart.data.datasets[5].segment = { backgroundColor: (ctx) => gapColors[ctx.p0DataIndex] };
+    chart.data.datasets[6].data = demandResampled.values.map((v) => v / yTier.factor);
+    chart.data.datasets[6].label = `Demand (${yUnit})`;
+    chart.data.datasets[7].data = socResampled.values.map((v) => v / y1Tier.factor);
+    chart.data.datasets[7].label = `Battery charge (${y1Unit})`;
     chart.options.scales.y.title.text = yUnit;
     chart.options.scales.y1.title.text = y1Unit;
     chart.options.scales.y1.max = batteryCapacityMWh / y1Tier.factor;
@@ -313,7 +386,7 @@ async function main() {
     probabilityEl.textContent = `${(probability * 100).toFixed(1)}%`;
     probabilityNoteEl.textContent =
       `Share of the ${windowHours.toLocaleString()} hourly intervals ${PERIODS[period].preposition} ${PERIODS[period].label} ` +
-      `where wind, base, variable generation, and battery discharge together fully cover demand. Batteries start the year fully charged.`;
+      `where base, wind, battery discharge, and variable generation together fully cover demand. Batteries start the year fully charged.`;
   }
 
   periodInput.addEventListener("change", update);
