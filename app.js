@@ -344,11 +344,11 @@ async function main() {
   const costMarginalCoalInput = document.getElementById("costMarginalCoal");
   const costMarginalWindInput = document.getElementById("costMarginalWind");
   const costMarginalSolarInput = document.getElementById("costMarginalSolar");
-  const costMarginalHydroInput = document.getElementById("costMarginalHydro");
-  const costMarginalGasInput = document.getElementById("costMarginalGas");
-  const costMarginalBatteryInput = document.getElementById("costMarginalBattery");
-  const costMarginalImportInput = document.getElementById("costMarginalImport");
-  const costMarginalReferenceInput = document.getElementById("costMarginalReference");
+  const costPriceDeepSurplusInput = document.getElementById("costPriceDeepSurplus");
+  const costPriceBalancedInput = document.getElementById("costPriceBalanced");
+  const costPriceHydroTopInput = document.getElementById("costPriceHydroTop");
+  const costPriceGasTopInput = document.getElementById("costPriceGasTop");
+  const costPriceScarcityInput = document.getElementById("costPriceScarcity");
   const avgSimPriceEl = document.getElementById("avgSimPrice");
   const avgHistPriceEl = document.getElementById("avgHistPrice");
   const opGenNuclear = document.getElementById("opGenNuclear");
@@ -744,21 +744,61 @@ async function main() {
     const coalSeries = new Array(windResampled.values.length).fill(coalMW);
     const firmGenSeries = windResampled.values.map((v, i) => v + solarResampled.values[i] + baseloadMW);
 
-    // Each hour's price is the higher of the Nordic/European reference price (the floor set by the
-    // wider interconnected market, since Sweden trades across borders even when its own supply is cheap)
-    // and the marginal cost of whichever source was needed last, in the same priority order as dispatch.
-    const marginalReference = Number(costMarginalReferenceInput.value);
-    const effectiveHydro = Math.max(marginalReference, Number(costMarginalHydroInput.value));
-    const effectiveGas = Math.max(marginalReference, Number(costMarginalGasInput.value));
-    const effectiveBattery = Math.max(marginalReference, Number(costMarginalBatteryInput.value));
-    const effectiveImport = Math.max(marginalReference, Number(costMarginalImportInput.value));
-    const priceSekMwh = importMW.map((importValue, i) => {
-      if (importValue > 0) return effectiveImport;
-      if (gasGenMW[i] > 0) return effectiveGas;
-      if (hydroGenMW[i] > 0) return effectiveHydro;
-      if (batteryDischargeMW[i] > 0) return effectiveBattery;
-      return marginalReference; // base + wind/solar alone covered demand (with or without curtailment)
-    });
+    // Each hour's price sits on a continuous curve running through five anchor points, positioned by
+    // how deep the deficit (or surplus/curtailment) that hour is relative to installed hydro/gas capacity
+    // — a simplified merit-order supply curve. This gives smooth, weather/demand-driven variability
+    // instead of a few fixed numbers, and can dip below zero during extreme oversupply, like real prices.
+    const deepSurplusPrice = Number(costPriceDeepSurplusInput.value);
+    const balancedPrice = Number(costPriceBalancedInput.value);
+    const hydroTopPrice = Number(costPriceHydroTopInput.value);
+    const gasTopPrice = Number(costPriceGasTopInput.value);
+    const scarcityPrice = Number(costPriceScarcityInput.value);
+    const avgDemandMW = scaledDemandMW.reduce((a, b) => a + b, 0) / scaledDemandMW.length;
+    // Tier widths are capped relative to average demand: real SE3 prices swing across their full range
+    // over a deficit/surplus of a few GW, not over Sweden's full multi-GW nameplate capacity (regional
+    // transmission bottlenecks mean only a fraction of that capacity is actually available to set the
+    // local price) — so more installed hydro/gas narrows the tier (cheaper, as expected) up to this cap.
+    const hydroTierWidthMW = Math.min(hydroMW, avgDemandMW * 0.6);
+    const gasTierWidthMW = Math.min(gasMW, avgDemandMW * 0.6);
+    const priceCurvePoints = [
+      [-avgDemandMW * 0.2, deepSurplusPrice],
+      [0, balancedPrice],
+      [hydroTierWidthMW, hydroTopPrice],
+      [hydroTierWidthMW + gasTierWidthMW, gasTopPrice],
+      [hydroTierWidthMW + gasTierWidthMW + avgDemandMW * 0.9, scarcityPrice],
+    ].reduce((points, point) => {
+      // Collapse zero-width segments (e.g. gasMW = 0) so a zero-capacity tier is skipped, not priced.
+      if (points.length && points[points.length - 1][0] === point[0]) return points;
+      points.push(point);
+      return points;
+    }, []);
+    // Curved (not linear) interpolation within each segment: price stays close to the "normal" end for
+    // most of a tier's range and only swings toward the extreme near the top, like a real convex
+    // merit-order supply curve — this is what produces realistic day-to-day price swings instead of a
+    // flat, low-variance average.
+    const CURVE_POWER = 1.8;
+    function priceAt(residualLoadMW) {
+      if (residualLoadMW <= priceCurvePoints[0][0]) return priceCurvePoints[0][1];
+      for (let i = 1; i < priceCurvePoints.length; i++) {
+        const [x0, y0] = priceCurvePoints[i - 1];
+        const [x1, y1] = priceCurvePoints[i];
+        if (residualLoadMW > x1) continue;
+        if (i === 1) {
+          // Surplus segment runs "backwards" (0 = normal/balanced, x0 = the extreme deep-surplus end).
+          const s = (x1 - residualLoadMW) / (x1 - x0);
+          return y1 + Math.pow(s, CURVE_POWER) * (y0 - y1);
+        }
+        const t = (residualLoadMW - x0) / (x1 - x0);
+        return y0 + Math.pow(t, CURVE_POWER) * (y1 - y0);
+      }
+      const [xPrev, yPrev] = priceCurvePoints[priceCurvePoints.length - 2];
+      const [xLast, yLast] = priceCurvePoints[priceCurvePoints.length - 1];
+      const tangentSlope = (CURVE_POWER * (yLast - yPrev)) / (xLast - xPrev);
+      return yLast + tangentSlope * (residualLoadMW - xLast);
+    }
+    // Deficit still uncovered by battery (hydro + gas + imports), net of any curtailed/exported surplus.
+    const residualLoadMW = hydroGenMW.map((v, i) => v + gasGenMW[i] + importMW[i] - exportMW[i]);
+    const priceSekMwh = residualLoadMW.map(priceAt);
     const priceResampled = resample(wind.time, priceSekMwh, unit, start, end);
     const histPriceResampled = resample(wind.time, historicalPriceSekMwh, unit, start, end);
 
@@ -935,10 +975,14 @@ async function main() {
     capBatteryUsageShare.textContent = `${usageSharePct(dischargeAvgMW).toFixed(0)}%`;
     capImportsUsageShare.textContent = `${usageSharePct(importAvgMW).toFixed(0)}%`;
 
-    // Operating cost & revenue: each source's actual generation over the window (including any
-    // curtailed/exported wind+solar+base, since that energy was still generated) times what it's
-    // actually paid — its own fuel cost for baseload/renewables, or the reference-floored market price
-    // for flexible/traded sources (hydro/gas/battery/imports/exports), matching the hourly price formula.
+    // Operating cost & revenue: nuclear/coal/wind/solar are valued at their own fuel cost (what it
+    // costs to run them, regardless of the market); hydro, gas, battery discharge, imports, and exports
+    // are all valued at that hour's actual price (they're the flexible/traded side of the system).
+    const windowValueSEK = (genArray) => {
+      let sum = 0;
+      for (let i = start; i < end; i++) sum += genArray[i] * priceSekMwh[i];
+      return sum;
+    };
     const marginalNuclear = Number(costMarginalNuclearInput.value);
     const marginalCoal = Number(costMarginalCoalInput.value);
     const marginalWind = Number(costMarginalWindInput.value);
@@ -947,11 +991,11 @@ async function main() {
     const coalOpCostSEK = coalMW * windowHours * marginalCoal;
     const windOpCostSEK = windAvgMW * windowHours * marginalWind;
     const solarOpCostSEK = solarAvgMW * windowHours * marginalSolar;
-    const hydroOpCostSEK = hydroAvgMW * windowHours * effectiveHydro;
-    const gasOpCostSEK = gasAvgMW * windowHours * effectiveGas;
-    const batteryOpCostSEK = dischargeAvgMW * windowHours * effectiveBattery;
-    const importOpCostSEK = importAvgMW * windowHours * effectiveImport;
-    const exportOpCostSEK = -(exportAvgMW * windowHours * marginalReference);
+    const hydroOpCostSEK = windowValueSEK(hydroGenMW);
+    const gasOpCostSEK = windowValueSEK(gasGenMW);
+    const batteryOpCostSEK = windowValueSEK(batteryDischargeMW);
+    const importOpCostSEK = windowValueSEK(importMW);
+    const exportOpCostSEK = -windowValueSEK(exportMW);
     const totalOpCostSEK =
       nuclearOpCostSEK +
       coalOpCostSEK +
@@ -1056,11 +1100,11 @@ async function main() {
   costMarginalCoalInput.addEventListener("input", update);
   costMarginalWindInput.addEventListener("input", update);
   costMarginalSolarInput.addEventListener("input", update);
-  costMarginalHydroInput.addEventListener("input", update);
-  costMarginalGasInput.addEventListener("input", update);
-  costMarginalBatteryInput.addEventListener("input", update);
-  costMarginalImportInput.addEventListener("input", update);
-  costMarginalReferenceInput.addEventListener("input", update);
+  costPriceDeepSurplusInput.addEventListener("input", update);
+  costPriceBalancedInput.addEventListener("input", update);
+  costPriceHydroTopInput.addEventListener("input", update);
+  costPriceGasTopInput.addEventListener("input", update);
+  costPriceScarcityInput.addEventListener("input", update);
   rebuildWeekOptions();
   rebuildDayOptions();
   update();
