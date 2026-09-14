@@ -89,7 +89,7 @@ function runSimulation(
       soc -= discharge;
       deficit -= discharge;
 
-      // Dispatchable gas/hydro fills the remaining shortfall first.
+      // Dispatchable gas/hydro is the last resort, covering only what wind + base + battery couldn't.
       const coverDeficit = Math.min(deficit, variableCapacityMW);
       deficit -= coverDeficit;
       if (deficit > 0) unmet[i] = 1;
@@ -210,11 +210,23 @@ async function main() {
   });
 
   function update() {
+    const period = periodInput.value;
+    const [start, end] = periodIndexRange(wind.time, period);
+
+    // Cap the battery slider at the total energy demand over the displayed window —
+    // a battery bigger than that could never be more than fully useful there.
+    // Step stays fixed (changing it can silently snap the current value to 0 in some browsers).
+    const totalDemandMWh = demand.demandMW.slice(start, end).reduce((a, b) => a + b, 0);
+    const batteryMax = Math.max(100, Math.round(totalDemandMWh));
+    batteryCapacityInput.max = batteryMax;
+    if (Number(batteryCapacityInput.value) > batteryMax) {
+      batteryCapacityInput.value = batteryMax;
+    }
+
     const windCapacityMW = Number(windCapacityInput.value);
     const batteryCapacityMWh = Number(batteryCapacityInput.value);
     const baseloadMW = Number(baseloadCapacityInput.value);
     const variableCapacityMW = Number(variableCapacityInput.value);
-    const period = periodInput.value;
     windCapacityValue.textContent = windCapacityMW.toLocaleString();
     batteryCapacityValue.textContent = batteryCapacityMWh.toLocaleString();
     baseloadCapacityValue.textContent = baseloadMW.toLocaleString();
@@ -230,8 +242,6 @@ async function main() {
       baseloadMW,
       variableCapacityMW
     );
-
-    const [start, end] = periodIndexRange(wind.time, period);
 
     const genResampled = resample(wind.time, generationMW, period, start, end);
     const variableResampled = resample(wind.time, variableGenMW, period, start, end);
