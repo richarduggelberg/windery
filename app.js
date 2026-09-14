@@ -235,7 +235,6 @@ async function main() {
   const capBatteryGenShare = document.getElementById("capBatteryGenShare");
   const capBatteryUsageShare = document.getElementById("capBatteryUsageShare");
   const capImportsUsageShare = document.getElementById("capImportsUsageShare");
-  const capExportsGenShare = document.getElementById("capExportsGenShare");
   const costNuclearInput = document.getElementById("costNuclear");
   const costCoalInput = document.getElementById("costCoal");
   const costWindInput = document.getElementById("costWind");
@@ -546,19 +545,33 @@ async function main() {
     const windowAverage = (values) => values.slice(start, end).reduce((a, b) => a + b, 0) / windowHours;
     const usedPct = (avgMW, installedMW) => (installedMW > 0 ? (avgMW / installedMW) * 100 : 0);
 
+    // Curtailment (export) comes out of base + wind's surplus; wind is curtailed first, then base,
+    // since variable (hydro/gas) capacity never runs during a surplus so it's never curtailed.
+    const exportAvgMW = windowAverage(exportMW);
+    const windAvgMW = windowAverage(windGenMW);
+    const baseFullAvgMW = nuclearMW + coalMW;
+    const windExportAvgMW = Math.min(windAvgMW, exportAvgMW);
+    const baseExportAvgMW = exportAvgMW - windExportAvgMW;
+    const nuclearExportAvgMW = baseExportAvgMW * (baseFullAvgMW > 0 ? nuclearMW / baseFullAvgMW : 0);
+    const coalExportAvgMW = baseExportAvgMW * (baseFullAvgMW > 0 ? coalMW / baseFullAvgMW : 0);
+    const exportedPct = (avgMW, installedMW) => (installedMW > 0 ? (avgMW / installedMW) * 100 : 0);
+    const exportedNote = (avgMW, installedMW) => {
+      const pct = exportedPct(avgMW, installedMW);
+      return pct >= 0.5 ? ` (${pct.toFixed(0)}% exported)` : "";
+    };
+
     // Baseload (nuclear + coal) always runs at full output, so each part is 100% used whenever installed.
     capNuclearInstalled.textContent = formatQuantity(nuclearMW, "MW");
     capNuclearShare.textContent = `${sharePct(nuclearMW).toFixed(0)}%`;
-    capNuclearUsed.textContent = `${nuclearMW > 0 ? "100" : "0"}%`;
+    capNuclearUsed.textContent = `${nuclearMW > 0 ? "100" : "0"}%${exportedNote(nuclearExportAvgMW, nuclearMW)}`;
 
     capCoalInstalled.textContent = formatQuantity(coalMW, "MW");
     capCoalShare.textContent = `${sharePct(coalMW).toFixed(0)}%`;
-    capCoalUsed.textContent = `${coalMW > 0 ? "100" : "0"}%`;
+    capCoalUsed.textContent = `${coalMW > 0 ? "100" : "0"}%${exportedNote(coalExportAvgMW, coalMW)}`;
 
-    const windAvgMW = windowAverage(windGenMW);
     capWindInstalled.textContent = formatQuantity(windCapacityMW, "MW");
     capWindShare.textContent = `${sharePct(windCapacityMW).toFixed(0)}%`;
-    capWindUsed.textContent = `${usedPct(windAvgMW, windCapacityMW).toFixed(0)}%`;
+    capWindUsed.textContent = `${usedPct(windAvgMW, windCapacityMW).toFixed(0)}%${exportedNote(windExportAvgMW, windCapacityMW)}`;
 
     // Hydro and gas share one dispatchable pool in the simulation, so both are assumed used at the pool's
     // overall utilization rate (there's no way to attribute dispatch to one vs. the other individually).
@@ -579,35 +592,21 @@ async function main() {
     capBatteryInstalled.textContent = formatQuantity(batteryCapacityMWh, "MWh");
     capBatteryUsed.textContent = `${usedPct(avgSocMWh, batteryCapacityMWh).toFixed(0)}% avg. charge`;
 
-    // Share of actual generation: nuclear/coal/wind full output, hydro/gas dispatched output, battery
-    // discharge, and exports (curtailed surplus) — sums to ~100% of all delivered + exported energy.
+    // Share of actual generation: each source's own raw average output (nuclear/coal/wind at full
+    // generation before any curtailment, hydro/gas dispatched output, battery discharge) as a share
+    // of total generation. Exported energy is included here (it was generated), not split out.
     const dischargeAvgMW = windowAverage(batteryDischargeMW);
-    const exportAvgMW = windowAverage(exportMW);
-    const nuclearFullAvgMW = nuclearMW; // baseload runs constant, so its average output equals its capacity
-    const coalFullAvgMW = coalMW;
     const hydroAvgMW = variableAvgMW * (variableCapacityMW > 0 ? hydroMW / variableCapacityMW : 0);
     const gasAvgMW = variableAvgMW * (variableCapacityMW > 0 ? gasMW / variableCapacityMW : 0);
-
-    // Curtailment comes out of base + wind's own output; attribute it to wind first, then to base,
-    // so it isn't double-counted inside each source's row as well as in the "Exports" row.
-    const baseFullAvgMW = nuclearFullAvgMW + coalFullAvgMW;
-    const windExportAvgMW = Math.min(windAvgMW, exportAvgMW);
-    const baseExportAvgMW = exportAvgMW - windExportAvgMW;
-    const windAvgMWNet = windAvgMW - windExportAvgMW;
-    const nuclearAvgMW = nuclearFullAvgMW - baseExportAvgMW * (baseFullAvgMW > 0 ? nuclearFullAvgMW / baseFullAvgMW : 0);
-    const coalAvgMW = coalFullAvgMW - baseExportAvgMW * (baseFullAvgMW > 0 ? coalFullAvgMW / baseFullAvgMW : 0);
-
-    const totalGenAvgMW =
-      nuclearAvgMW + coalAvgMW + windAvgMWNet + hydroAvgMW + gasAvgMW + dischargeAvgMW + exportAvgMW;
+    const totalGenAvgMW = nuclearMW + coalMW + windAvgMW + hydroAvgMW + gasAvgMW + dischargeAvgMW;
     const genSharePct = (avgMW) => (totalGenAvgMW > 0 ? (avgMW / totalGenAvgMW) * 100 : 0);
 
-    capNuclearGenShare.textContent = `${genSharePct(nuclearAvgMW).toFixed(0)}%`;
-    capCoalGenShare.textContent = `${genSharePct(coalAvgMW).toFixed(0)}%`;
-    capWindGenShare.textContent = `${genSharePct(windAvgMWNet).toFixed(0)}%`;
+    capNuclearGenShare.textContent = `${genSharePct(nuclearMW).toFixed(0)}%`;
+    capCoalGenShare.textContent = `${genSharePct(coalMW).toFixed(0)}%`;
+    capWindGenShare.textContent = `${genSharePct(windAvgMW).toFixed(0)}%`;
     capHydroGenShare.textContent = `${genSharePct(hydroAvgMW).toFixed(0)}%`;
     capGasGenShare.textContent = `${genSharePct(gasAvgMW).toFixed(0)}%`;
     capBatteryGenShare.textContent = `${genSharePct(dischargeAvgMW).toFixed(0)}%`;
-    capExportsGenShare.textContent = `${genSharePct(exportAvgMW).toFixed(0)}%`;
 
     // Share of actual usage: how much of demand was met by each source, plus imports for any deficit
     // that base + wind + battery + variable couldn't cover. Never affects the probability figure above.
