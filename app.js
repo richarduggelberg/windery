@@ -406,18 +406,18 @@ async function main() {
     const windCapacityMW = WIND_BASELINE_MW * (Number(windCapacityInput.value) / 100);
     // Battery slider is in TWh (0.5 TWh increments); convert to MWh for the simulation.
     const batteryCapacityMWh = Number(batteryCapacityInput.value) * 1e6;
-    // Nuclear/coal/hydro/gas sliders are absolute GW; base = nuclear + coal, variable = hydro + gas.
-    const nuclearMW = Number(nuclearCapacityInput.value) * 1000;
+    // Nuclear/hydro sliders are % of baseline (non-zero defaults); coal/gas are absolute GW (zero default).
+    const nuclearMW = NUCLEAR_BASELINE_MW * (Number(nuclearCapacityInput.value) / 100);
     const coalMW = Number(coalCapacityInput.value) * 1000;
-    const hydroMW = Number(hydroCapacityInput.value) * 1000;
+    const hydroMW = HYDRO_BASELINE_MW * (Number(hydroCapacityInput.value) / 100);
     const gasMW = Number(gasCapacityInput.value) * 1000;
     const baseloadMW = nuclearMW + coalMW;
     const variableCapacityMW = hydroMW + gasMW;
     windCapacityValue.textContent = `${windCapacityInput.value}% (${formatQuantity(windCapacityMW, "MW")})`;
     batteryCapacityValue.textContent = formatQuantity(batteryCapacityMWh, "MWh");
-    nuclearCapacityValue.textContent = formatQuantity(nuclearMW, "MW");
+    nuclearCapacityValue.textContent = `${nuclearCapacityInput.value}% (${formatQuantity(nuclearMW, "MW")})`;
     coalCapacityValue.textContent = formatQuantity(coalMW, "MW");
-    hydroCapacityValue.textContent = formatQuantity(hydroMW, "MW");
+    hydroCapacityValue.textContent = `${hydroCapacityInput.value}% (${formatQuantity(hydroMW, "MW")})`;
     gasCapacityValue.textContent = formatQuantity(gasMW, "MW");
 
     // Always simulate the full year so battery state of charge carries over correctly,
