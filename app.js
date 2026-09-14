@@ -622,6 +622,10 @@ async function main() {
             filter: (item, data) => !data.datasets[item.datasetIndex].hideInLegend,
           },
         },
+        tooltip: {
+          filter: (item) => Math.abs(item.parsed.y) > 0.1,
+          itemSort: (a, b) => b.parsed.y - a.parsed.y,
+        },
       },
       scales: {
         x: { ticks: { maxTicksLimit: 12 } },
@@ -665,6 +669,12 @@ async function main() {
     options: {
       responsive: true,
       interaction: { mode: "index", intersect: false },
+      plugins: {
+        tooltip: {
+          filter: (item) => Math.abs(item.parsed.y) > 0.1,
+          itemSort: (a, b) => b.parsed.y - a.parsed.y,
+        },
+      },
       scales: {
         x: { ticks: { maxTicksLimit: 12 } },
         y: { title: { display: true, text: "SEK/MWh" } },
