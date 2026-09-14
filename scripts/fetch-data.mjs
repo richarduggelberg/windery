@@ -45,35 +45,42 @@ function seededNoise(seed) {
   return x - Math.floor(x);
 }
 
-function seasonFactor(month) {
-  // Dec/Jan/Feb winter peak, Jun/Jul/Aug summer low, shoulder otherwise.
-  if ([12, 1, 2].includes(month)) return 1.3;
-  if ([6, 7, 8].includes(month)) return 0.8;
-  return 1.05;
+// Smooth annual cycle: winter peak (~Jan), summer trough (~Jul). No month-boundary jumps.
+function seasonFactor(dayOfYear) {
+  return 1 + 0.28 * Math.cos((2 * Math.PI * (dayOfYear - 15)) / 365);
 }
 
-function dailyFactor(hour) {
-  if (hour < 6) return 0.75;
-  if (hour < 9) return 1.05;
-  if (hour < 16) return 0.95;
-  if (hour < 20) return 1.15;
-  return 0.85;
+// Smooth double-hump daily load shape (morning + evening peaks) using continuous hour-of-day.
+function dailyFactor(hourFraction) {
+  const morningPeak = Math.exp(-Math.pow((hourFraction - 8) / 2.5, 2));
+  const eveningPeak = Math.exp(-Math.pow((hourFraction - 19) / 3, 2));
+  return 0.82 + 0.28 * morningPeak + 0.32 * eveningPeak;
+}
+
+// Smooth weekly cycle (continuous, so weekday/weekend transition has no sharp corners).
+function weeklyFactor(dayIndexContinuous) {
+  return 1 - 0.07 * Math.cos((2 * Math.PI * (dayIndexContinuous - 5)) / 7);
 }
 
 function generateDemand(timestamps) {
   const BASE_LOAD_MW = 12000;
+  const dayMs = 24 * 60 * 60 * 1000;
+  const startMs = Date.parse(timestamps[0] + "Z");
+
   const demandMW = timestamps.map((iso, i) => {
-    const d = new Date(iso + "Z");
-    const month = d.getUTCMonth() + 1;
-    const hour = d.getUTCHours();
-    const day = d.getUTCDay(); // 0 = Sunday, 6 = Saturday
-    const weekendFactor = day === 0 || day === 6 ? 0.9 : 1.0;
-    const noise = 0.97 + seededNoise(i) * 0.06;
+    const ms = Date.parse(iso + "Z");
+    const d = new Date(ms);
+    const startOfYear = Date.UTC(d.getUTCFullYear(), 0, 1);
+    const dayOfYear = (ms - startOfYear) / dayMs;
+    const hourFraction = d.getUTCHours() + d.getUTCMinutes() / 60;
+    const dayIndexContinuous = (ms - startMs) / dayMs;
+    const noise = 0.98 + seededNoise(i) * 0.04;
+
     const mw =
       BASE_LOAD_MW *
-      seasonFactor(month) *
-      dailyFactor(hour) *
-      weekendFactor *
+      seasonFactor(dayOfYear) *
+      dailyFactor(hourFraction) *
+      weeklyFactor(dayIndexContinuous) *
       noise;
     return Math.round(mw);
   });

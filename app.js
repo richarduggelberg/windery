@@ -62,44 +62,9 @@ async function main() {
     loadJSON("data/demand.json"),
   ]);
 
-  const windDaily = dailyAverage(wind.time, wind.windSpeed100m);
+  const capacityFactors = wind.windSpeed100m.map(windCapacityFactor);
+  const capacityFactorDaily = dailyAverage(wind.time, capacityFactors);
   const demandDaily = dailyAverage(demand.time, demand.demandMW);
-
-  new Chart(document.getElementById("windChart"), {
-    type: "line",
-    data: {
-      labels: windDaily.labels,
-      datasets: [{
-        label: "Daily mean wind speed (m/s)",
-        data: windDaily.means,
-        borderColor: "#2b7a78",
-        pointRadius: 0,
-        borderWidth: 1.5,
-      }],
-    },
-    options: {
-      responsive: true,
-      scales: { x: { ticks: { maxTicksLimit: 12 } } },
-    },
-  });
-
-  new Chart(document.getElementById("demandChart"), {
-    type: "line",
-    data: {
-      labels: demandDaily.labels,
-      datasets: [{
-        label: "Daily mean demand (MW)",
-        data: demandDaily.means,
-        borderColor: "#c44536",
-        pointRadius: 0,
-        borderWidth: 1.5,
-      }],
-    },
-    options: {
-      responsive: true,
-      scales: { x: { ticks: { maxTicksLimit: 12 } } },
-    },
-  });
 
   const windCapacityInput = document.getElementById("windCapacity");
   const batteryCapacityInput = document.getElementById("batteryCapacity");
@@ -107,11 +72,45 @@ async function main() {
   const batteryCapacityValue = document.getElementById("batteryCapacityValue");
   const probabilityEl = document.getElementById("probability");
 
+  const chart = new Chart(document.getElementById("combinedChart"), {
+    type: "line",
+    data: {
+      labels: demandDaily.labels,
+      datasets: [
+        {
+          label: "Wind generation (MW)",
+          data: capacityFactorDaily.means.map((cf) => cf * Number(windCapacityInput.value)),
+          borderColor: "#2b7a78",
+          pointRadius: 0,
+          borderWidth: 1.5,
+        },
+        {
+          label: "Demand (MW)",
+          data: demandDaily.means,
+          borderColor: "#c44536",
+          pointRadius: 0,
+          borderWidth: 1.5,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: "index", intersect: false },
+      scales: {
+        x: { ticks: { maxTicksLimit: 12 } },
+        y: { title: { display: true, text: "MW" } },
+      },
+    },
+  });
+
   function update() {
     const windCapacityMW = Number(windCapacityInput.value);
     const batteryCapacityMWh = Number(batteryCapacityInput.value);
     windCapacityValue.textContent = windCapacityMW.toLocaleString();
     batteryCapacityValue.textContent = batteryCapacityMWh.toLocaleString();
+
+    chart.data.datasets[0].data = capacityFactorDaily.means.map((cf) => cf * windCapacityMW);
+    chart.update("none");
 
     const probability = runSimulation(
       wind.windSpeed100m,
