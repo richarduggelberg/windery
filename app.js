@@ -126,6 +126,8 @@ function runSimulation(
   const variableGenMW = new Array(totalHours);
   const socMWh = new Array(totalHours);
   const unmet = new Uint8Array(totalHours);
+  const exportMW = new Array(totalHours); // curtailed surplus beyond battery headroom
+  const importMW = new Array(totalHours); // deficit left uncovered by base+wind+battery+variable
   let soc = batteryCapacityMWh; // batteries start fully charged
 
   // Demand is met additively, in priority order: base, then wind, then battery, then variable (last resort).
@@ -136,6 +138,8 @@ function runSimulation(
     const net = firmGen - demand; // MW over a 1-hour step == MWh
     let discharge = 0;
     let variableGen = 0;
+    let curtailed = 0;
+    let unmetMW = 0;
 
     if (net >= 0) {
       // Surplus base + wind generation charges the battery; variable capacity never charges it.
@@ -143,6 +147,7 @@ function runSimulation(
       const chargeFromSurplus = Math.min(surplus, batteryCapacityMWh - soc);
       soc += chargeFromSurplus;
       // Any surplus beyond battery headroom is curtailed/exported (not modeled further).
+      curtailed = surplus - chargeFromSurplus;
     } else {
       let deficit = -net;
       discharge = Math.min(deficit, soc);
@@ -152,15 +157,20 @@ function runSimulation(
       // Dispatchable gas/hydro is the last resort, covering only what base + wind + battery couldn't.
       variableGen = Math.min(deficit, variableCapacityMW);
       deficit -= variableGen;
-      if (deficit > 0) unmet[i] = 1;
+      if (deficit > 0) {
+        unmet[i] = 1;
+        unmetMW = deficit; // treated as imported from outside the modeled system
+      }
     }
     windGenMW[i] = windGen;
     batteryDischargeMW[i] = discharge;
     variableGenMW[i] = variableGen;
     socMWh[i] = soc;
+    exportMW[i] = curtailed;
+    importMW[i] = unmetMW;
   }
 
-  return { windGenMW, batteryDischargeMW, variableGenMW, socMWh, unmet };
+  return { windGenMW, batteryDischargeMW, variableGenMW, socMWh, unmet, exportMW, importMW };
 }
 
 async function loadJSON(path) {
@@ -196,25 +206,33 @@ async function main() {
   const capNuclearShare = document.getElementById("capNuclearShare");
   const capNuclearUsed = document.getElementById("capNuclearUsed");
   const capNuclearGenShare = document.getElementById("capNuclearGenShare");
+  const capNuclearUsageShare = document.getElementById("capNuclearUsageShare");
   const capCoalInstalled = document.getElementById("capCoalInstalled");
   const capCoalShare = document.getElementById("capCoalShare");
   const capCoalUsed = document.getElementById("capCoalUsed");
   const capCoalGenShare = document.getElementById("capCoalGenShare");
+  const capCoalUsageShare = document.getElementById("capCoalUsageShare");
   const capWindInstalled = document.getElementById("capWindInstalled");
   const capWindShare = document.getElementById("capWindShare");
   const capWindUsed = document.getElementById("capWindUsed");
   const capWindGenShare = document.getElementById("capWindGenShare");
+  const capWindUsageShare = document.getElementById("capWindUsageShare");
   const capHydroInstalled = document.getElementById("capHydroInstalled");
   const capHydroShare = document.getElementById("capHydroShare");
   const capHydroUsed = document.getElementById("capHydroUsed");
   const capHydroGenShare = document.getElementById("capHydroGenShare");
+  const capHydroUsageShare = document.getElementById("capHydroUsageShare");
   const capGasInstalled = document.getElementById("capGasInstalled");
   const capGasShare = document.getElementById("capGasShare");
   const capGasUsed = document.getElementById("capGasUsed");
   const capGasGenShare = document.getElementById("capGasGenShare");
+  const capGasUsageShare = document.getElementById("capGasUsageShare");
   const capBatteryInstalled = document.getElementById("capBatteryInstalled");
   const capBatteryUsed = document.getElementById("capBatteryUsed");
   const capBatteryGenShare = document.getElementById("capBatteryGenShare");
+  const capBatteryUsageShare = document.getElementById("capBatteryUsageShare");
+  const capImportsUsageShare = document.getElementById("capImportsUsageShare");
+  const capExportsGenShare = document.getElementById("capExportsGenShare");
   const costNuclearInput = document.getElementById("costNuclear");
   const costCoalInput = document.getElementById("costCoal");
   const costWindInput = document.getElementById("costWind");
@@ -308,7 +326,19 @@ async function main() {
           order: 4,
         },
         {
-          label: "Variable generation used (MW)",
+          label: "Hydro generation used (MW)",
+          data: [],
+          borderColor: "#3a6ea5",
+          backgroundColor: "rgba(58, 110, 165, 0.35)",
+          pointRadius: 0,
+          borderWidth: 1.5,
+          yAxisID: "y",
+          stack: "gen",
+          fill: "-1",
+          order: 5,
+        },
+        {
+          label: "Gas generation used (MW)",
           data: [],
           borderColor: "#e0a458",
           backgroundColor: "rgba(224, 164, 88, 0.35)",
@@ -317,7 +347,7 @@ async function main() {
           yAxisID: "y",
           stack: "gen",
           fill: "-1",
-          order: 5,
+          order: 6,
         },
         {
           // Invisible; only exists as a fill target so the gap dataset can shade base+wind vs demand.
@@ -330,7 +360,7 @@ async function main() {
           yAxisID: "y",
           stack: "firmgen",
           fill: false,
-          order: 6,
+          order: 7,
           hideInLegend: true,
         },
         {
@@ -343,8 +373,8 @@ async function main() {
           borderColor: "transparent",
           yAxisID: "y",
           stack: "gap",
-          fill: { target: 5 },
-          order: 7,
+          fill: { target: 6 },
+          order: 8,
           hideInLegend: true,
         },
         {
@@ -356,7 +386,7 @@ async function main() {
           yAxisID: "y",
           stack: "demand",
           fill: false,
-          order: 8,
+          order: 9,
         },
         {
           label: "Battery charge (MWh)",
@@ -367,7 +397,7 @@ async function main() {
           borderWidth: 1.5,
           yAxisID: "y1",
           fill: false,
-          order: 9,
+          order: 10,
         },
       ],
     },
@@ -422,7 +452,7 @@ async function main() {
 
     // Always simulate the full year so battery state of charge carries over correctly,
     // then slice down to the selected window for display and the probability figure.
-    const { windGenMW, batteryDischargeMW, variableGenMW, socMWh, unmet } = runSimulation(
+    const { windGenMW, batteryDischargeMW, variableGenMW, socMWh, unmet, exportMW, importMW } = runSimulation(
       wind.windSpeed100m,
       scaledDemandMW,
       windCapacityMW,
@@ -431,9 +461,17 @@ async function main() {
       variableCapacityMW
     );
 
+    // Hydro and gas share one dispatchable pool in the simulation; split its output between them
+    // proportionally to their installed capacity so each gets its own chart curve.
+    const hydroShare = variableCapacityMW > 0 ? hydroMW / variableCapacityMW : 0;
+    const gasShare = variableCapacityMW > 0 ? gasMW / variableCapacityMW : 0;
+    const hydroGenMW = variableGenMW.map((v) => v * hydroShare);
+    const gasGenMW = variableGenMW.map((v) => v * gasShare);
+
     const windResampled = resample(wind.time, windGenMW, period, start, end);
     const dischargeResampled = resample(wind.time, batteryDischargeMW, period, start, end);
-    const variableResampled = resample(wind.time, variableGenMW, period, start, end);
+    const hydroResampled = resample(wind.time, hydroGenMW, period, start, end);
+    const gasResampled = resample(wind.time, gasGenMW, period, start, end);
     const socResampled = resample(wind.time, socMWh, period, start, end);
     const demandResampled = resample(demand.time, scaledDemandMW, period, start, end);
     const nuclearSeries = new Array(windResampled.values.length).fill(nuclearMW);
@@ -448,7 +486,8 @@ async function main() {
         ...nuclearSeries,
         ...coalSeries,
         ...dischargeResampled.values,
-        ...variableResampled.values,
+        ...hydroResampled.values,
+        ...gasResampled.values,
         ...demandResampled.values
       )
     );
@@ -471,15 +510,17 @@ async function main() {
     chart.data.datasets[2].label = `Wind generation (${yUnit})`;
     chart.data.datasets[3].data = dischargeResampled.values.map((v) => v / yTier.factor);
     chart.data.datasets[3].label = `Battery discharge used (${yUnit})`;
-    chart.data.datasets[4].data = variableResampled.values.map((v) => v / yTier.factor);
-    chart.data.datasets[4].label = `Variable generation used (${yUnit})`;
-    chart.data.datasets[5].data = firmGenSeries.map((v) => v / yTier.factor);
-    chart.data.datasets[6].data = demandResampled.values.map((v) => v / yTier.factor);
-    chart.data.datasets[6].segment = { backgroundColor: (ctx) => gapColors[ctx.p0DataIndex] };
+    chart.data.datasets[4].data = hydroResampled.values.map((v) => v / yTier.factor);
+    chart.data.datasets[4].label = `Hydro generation used (${yUnit})`;
+    chart.data.datasets[5].data = gasResampled.values.map((v) => v / yTier.factor);
+    chart.data.datasets[5].label = `Gas generation used (${yUnit})`;
+    chart.data.datasets[6].data = firmGenSeries.map((v) => v / yTier.factor);
     chart.data.datasets[7].data = demandResampled.values.map((v) => v / yTier.factor);
-    chart.data.datasets[7].label = `Demand (${yUnit})`;
-    chart.data.datasets[8].data = socResampled.values.map((v) => v / y1Tier.factor);
-    chart.data.datasets[8].label = `Battery charge (${y1Unit})`;
+    chart.data.datasets[7].segment = { backgroundColor: (ctx) => gapColors[ctx.p0DataIndex] };
+    chart.data.datasets[8].data = demandResampled.values.map((v) => v / yTier.factor);
+    chart.data.datasets[8].label = `Demand (${yUnit})`;
+    chart.data.datasets[9].data = socResampled.values.map((v) => v / y1Tier.factor);
+    chart.data.datasets[9].label = `Battery charge (${y1Unit})`;
     chart.options.scales.y.title.text = yUnit;
     chart.options.scales.y1.title.text = y1Unit;
     chart.options.scales.y1.max = batteryCapacityMWh / y1Tier.factor;
@@ -534,22 +575,62 @@ async function main() {
     capBatteryInstalled.textContent = formatQuantity(batteryCapacityMWh, "MWh");
     capBatteryUsed.textContent = `${usedPct(avgSocMWh, batteryCapacityMWh).toFixed(0)}% avg. charge`;
 
-    // Share of actual generation: each source's average delivered output as a share of the total
-    // delivered across all sources (including battery discharge), so the column sums to ~100%.
+    // Share of actual generation: nuclear/coal/wind full output, hydro/gas dispatched output, battery
+    // discharge, and exports (curtailed surplus) — sums to ~100% of all delivered + exported energy.
     const dischargeAvgMW = windowAverage(batteryDischargeMW);
-    const nuclearAvgMW = nuclearMW; // baseload runs constant, so its average output equals its capacity
-    const coalAvgMW = coalMW;
+    const exportAvgMW = windowAverage(exportMW);
+    const nuclearFullAvgMW = nuclearMW; // baseload runs constant, so its average output equals its capacity
+    const coalFullAvgMW = coalMW;
     const hydroAvgMW = variableAvgMW * (variableCapacityMW > 0 ? hydroMW / variableCapacityMW : 0);
     const gasAvgMW = variableAvgMW * (variableCapacityMW > 0 ? gasMW / variableCapacityMW : 0);
-    const totalGenAvgMW = nuclearAvgMW + coalAvgMW + windAvgMW + variableAvgMW + dischargeAvgMW;
+
+    // Curtailment comes out of base + wind's own output; attribute it to wind first, then to base,
+    // so it isn't double-counted inside each source's row as well as in the "Exports" row.
+    const baseFullAvgMW = nuclearFullAvgMW + coalFullAvgMW;
+    const windExportAvgMW = Math.min(windAvgMW, exportAvgMW);
+    const baseExportAvgMW = exportAvgMW - windExportAvgMW;
+    const windAvgMWNet = windAvgMW - windExportAvgMW;
+    const nuclearAvgMW = nuclearFullAvgMW - baseExportAvgMW * (baseFullAvgMW > 0 ? nuclearFullAvgMW / baseFullAvgMW : 0);
+    const coalAvgMW = coalFullAvgMW - baseExportAvgMW * (baseFullAvgMW > 0 ? coalFullAvgMW / baseFullAvgMW : 0);
+
+    const totalGenAvgMW =
+      nuclearAvgMW + coalAvgMW + windAvgMWNet + hydroAvgMW + gasAvgMW + dischargeAvgMW + exportAvgMW;
     const genSharePct = (avgMW) => (totalGenAvgMW > 0 ? (avgMW / totalGenAvgMW) * 100 : 0);
 
     capNuclearGenShare.textContent = `${genSharePct(nuclearAvgMW).toFixed(0)}%`;
     capCoalGenShare.textContent = `${genSharePct(coalAvgMW).toFixed(0)}%`;
-    capWindGenShare.textContent = `${genSharePct(windAvgMW).toFixed(0)}%`;
+    capWindGenShare.textContent = `${genSharePct(windAvgMWNet).toFixed(0)}%`;
     capHydroGenShare.textContent = `${genSharePct(hydroAvgMW).toFixed(0)}%`;
     capGasGenShare.textContent = `${genSharePct(gasAvgMW).toFixed(0)}%`;
     capBatteryGenShare.textContent = `${genSharePct(dischargeAvgMW).toFixed(0)}%`;
+    capExportsGenShare.textContent = `${genSharePct(exportAvgMW).toFixed(0)}%`;
+
+    // Share of actual usage: how much of demand was met by each source, plus imports for any deficit
+    // that base + wind + battery + variable couldn't cover. Never affects the probability figure above.
+    const totalHours = windGenMW.length;
+    const baseUsedMW = new Array(totalHours);
+    const windUsedMW = new Array(totalHours);
+    for (let i = 0; i < totalHours; i++) {
+      const used = Math.min(baseloadMW, scaledDemandMW[i]);
+      baseUsedMW[i] = used;
+      windUsedMW[i] = Math.min(windGenMW[i], scaledDemandMW[i] - used);
+    }
+    const baseUsedAvgMW = windowAverage(baseUsedMW);
+    const windUsedAvgMW = windowAverage(windUsedMW);
+    const nuclearUsedAvgMW = baseUsedAvgMW * (baseloadMW > 0 ? nuclearMW / baseloadMW : 0);
+    const coalUsedAvgMW = baseUsedAvgMW * (baseloadMW > 0 ? coalMW / baseloadMW : 0);
+    const importAvgMW = windowAverage(importMW);
+    const totalUsageAvgMW =
+      nuclearUsedAvgMW + coalUsedAvgMW + windUsedAvgMW + hydroAvgMW + gasAvgMW + dischargeAvgMW + importAvgMW;
+    const usageSharePct = (avgMW) => (totalUsageAvgMW > 0 ? (avgMW / totalUsageAvgMW) * 100 : 0);
+
+    capNuclearUsageShare.textContent = `${usageSharePct(nuclearUsedAvgMW).toFixed(0)}%`;
+    capCoalUsageShare.textContent = `${usageSharePct(coalUsedAvgMW).toFixed(0)}%`;
+    capWindUsageShare.textContent = `${usageSharePct(windUsedAvgMW).toFixed(0)}%`;
+    capHydroUsageShare.textContent = `${usageSharePct(hydroAvgMW).toFixed(0)}%`;
+    capGasUsageShare.textContent = `${usageSharePct(gasAvgMW).toFixed(0)}%`;
+    capBatteryUsageShare.textContent = `${usageSharePct(dischargeAvgMW).toFixed(0)}%`;
+    capImportsUsageShare.textContent = `${usageSharePct(importAvgMW).toFixed(0)}%`;
 
     // Build cost: only capacity currently above each source's already-installed baseline counts,
     // computed from the slider's current position so lowering it back down reduces cost accordingly.
