@@ -16,17 +16,17 @@
     <section class="controls">
       <div class="control">
         <label for="windCapacity">Installed wind capacity: <span id="windCapacityValue"></span> MW</label>
-        <input type="range" id="windCapacity" min="0" max="30000" step="100" value="5000">
+        <input type="range" id="windCapacity" min="0" max="90000" step="100" value="5000">
       </div>
       <div class="control">
         <label for="batteryCapacity">Installed battery capacity: <span id="batteryCapacityValue"></span> MWh</label>
-        <input type="range" id="batteryCapacity" min="0" max="20000" step="100" value="2000">
+        <input type="range" id="batteryCapacity" min="0" max="60000" step="100" value="2000">
       </div>
     </section>
 
     <section class="charts">
       <div class="chart-card">
-        <h2>Wind + battery supply vs. electricity demand</h2>
+        <h2>Wind generation, battery charge &amp; demand</h2>
         <canvas id="combinedChart"></canvas>
       </div>
     </section>

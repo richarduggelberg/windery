@@ -28,7 +28,8 @@ function dailyAverage(time, values) {
 
 function runSimulation(windSpeed, demandMW, windCapacityMW, batteryCapacityMWh) {
   const totalHours = windSpeed.length;
-  const supplyMW = new Array(totalHours);
+  const generationMW = new Array(totalHours);
+  const socMWh = new Array(totalHours);
   let soc = batteryCapacityMWh; // batteries start fully charged
   let unmetHours = 0;
 
@@ -39,17 +40,17 @@ function runSimulation(windSpeed, demandMW, windCapacityMW, batteryCapacityMWh) 
     if (net >= 0) {
       const chargeRoom = batteryCapacityMWh - soc;
       soc += Math.min(net, chargeRoom);
-      supplyMW[i] = demand; // surplus beyond battery headroom is curtailed
     } else {
       const deficit = -net;
       const discharge = Math.min(deficit, soc);
       soc -= discharge;
-      supplyMW[i] = generation + discharge;
-      if (supplyMW[i] < demand) unmetHours++;
+      if (generation + discharge < demand) unmetHours++;
     }
+    generationMW[i] = generation;
+    socMWh[i] = soc;
   }
 
-  return { supplyMW, probability: 1 - unmetHours / totalHours };
+  return { generationMW, socMWh, probability: 1 - unmetHours / totalHours };
 }
 
 async function loadJSON(path) {
@@ -72,7 +73,7 @@ async function main() {
   const batteryCapacityValue = document.getElementById("batteryCapacityValue");
   const probabilityEl = document.getElementById("probability");
 
-  const initialSupply = runSimulation(
+  const initial = runSimulation(
     wind.windSpeed100m,
     demand.demandMW,
     Number(windCapacityInput.value),
@@ -85,11 +86,12 @@ async function main() {
       labels: demandDaily.labels,
       datasets: [
         {
-          label: "Wind + battery supply (MW)",
-          data: dailyAverage(wind.time, initialSupply.supplyMW).means,
+          label: "Wind generation (MW)",
+          data: dailyAverage(wind.time, initial.generationMW).means,
           borderColor: "#2b7a78",
           pointRadius: 0,
           borderWidth: 1.5,
+          yAxisID: "y",
         },
         {
           label: "Demand (MW)",
@@ -97,6 +99,15 @@ async function main() {
           borderColor: "#c44536",
           pointRadius: 0,
           borderWidth: 1.5,
+          yAxisID: "y",
+        },
+        {
+          label: "Battery charge (MWh)",
+          data: dailyAverage(wind.time, initial.socMWh).means,
+          borderColor: "#5b7fd6",
+          pointRadius: 0,
+          borderWidth: 1.5,
+          yAxisID: "y1",
         },
       ],
     },
@@ -106,6 +117,12 @@ async function main() {
       scales: {
         x: { ticks: { maxTicksLimit: 12 } },
         y: { title: { display: true, text: "MW" } },
+        y1: {
+          position: "right",
+          title: { display: true, text: "MWh" },
+          min: 0,
+          grid: { drawOnChartArea: false },
+        },
       },
     },
   });
@@ -116,14 +133,16 @@ async function main() {
     windCapacityValue.textContent = windCapacityMW.toLocaleString();
     batteryCapacityValue.textContent = batteryCapacityMWh.toLocaleString();
 
-    const { supplyMW, probability } = runSimulation(
+    const { generationMW, socMWh, probability } = runSimulation(
       wind.windSpeed100m,
       demand.demandMW,
       windCapacityMW,
       batteryCapacityMWh
     );
 
-    chart.data.datasets[0].data = dailyAverage(wind.time, supplyMW).means;
+    chart.data.datasets[0].data = dailyAverage(wind.time, generationMW).means;
+    chart.data.datasets[2].data = dailyAverage(wind.time, socMWh).means;
+    chart.options.scales.y1.max = batteryCapacityMWh;
     chart.update("none");
 
     probabilityEl.textContent = `${(probability * 100).toFixed(1)}%`;
