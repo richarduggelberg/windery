@@ -4,6 +4,11 @@ const CUT_IN_MS = 3;
 const RATED_MS = 12;
 const CUT_OUT_MS = 25;
 
+// Sweden's approximate installed capacity as of 2025/2026, used as the 100% baseline for the capacity sliders.
+const WIND_BASELINE_MW = 19000;
+const BASELOAD_BASELINE_MW = 7000;
+const VARIABLE_BASELINE_MW = 16500;
+
 function windCapacityFactor(speedMs) {
   if (speedMs < CUT_IN_MS || speedMs >= CUT_OUT_MS) return 0;
   if (speedMs >= RATED_MS) return 1;
@@ -333,14 +338,14 @@ async function main() {
       batteryCapacityInput.value = batteryMax;
     }
 
-    const windCapacityMW = Number(windCapacityInput.value);
+    const windCapacityMW = WIND_BASELINE_MW * (Number(windCapacityInput.value) / 100);
     const batteryCapacityMWh = Number(batteryCapacityInput.value);
-    const baseloadMW = Number(baseloadCapacityInput.value);
-    const variableCapacityMW = Number(variableCapacityInput.value);
-    windCapacityValue.textContent = formatQuantity(windCapacityMW, "MW");
+    const baseloadMW = BASELOAD_BASELINE_MW * (Number(baseloadCapacityInput.value) / 100);
+    const variableCapacityMW = VARIABLE_BASELINE_MW * (Number(variableCapacityInput.value) / 100);
+    windCapacityValue.textContent = `${windCapacityInput.value}% (${formatQuantity(windCapacityMW, "MW")})`;
     batteryCapacityValue.textContent = formatQuantity(batteryCapacityMWh, "MWh");
-    baseloadCapacityValue.textContent = formatQuantity(baseloadMW, "MW");
-    variableCapacityValue.textContent = formatQuantity(variableCapacityMW, "MW");
+    baseloadCapacityValue.textContent = `${baseloadCapacityInput.value}% (${formatQuantity(baseloadMW, "MW")})`;
+    variableCapacityValue.textContent = `${variableCapacityInput.value}% (${formatQuantity(variableCapacityMW, "MW")})`;
 
     // Always simulate the full year so battery state of charge carries over correctly,
     // then slice down to the selected window for display and the probability figure.
