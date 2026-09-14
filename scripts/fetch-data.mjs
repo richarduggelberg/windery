@@ -39,6 +39,31 @@ async function fetchWind() {
   };
 }
 
+async function fetchSolar() {
+  const url =
+    `https://archive-api.open-meteo.com/v1/archive` +
+    `?latitude=${LATITUDE}&longitude=${LONGITUDE}` +
+    `&start_date=${START_DATE}&end_date=${END_DATE}` +
+    `&hourly=shortwave_radiation` +
+    `&timezone=UTC`;
+
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`Open-Meteo request failed: ${res.status} ${res.statusText}`);
+  }
+  const json = await res.json();
+  return {
+    site: "Stockholm, Sweden",
+    latitude: LATITUDE,
+    longitude: LONGITUDE,
+    source: "Open-Meteo historical archive (ERA5)",
+    unit: "W/m2",
+    time: json.hourly.time,
+    shortwaveRadiation: json.hourly.shortwave_radiation,
+  };
+}
+
+
 // Deterministic pseudo-random noise so regenerating the file is reproducible.
 function seededNoise(seed) {
   const x = Math.sin(seed * 12.9898) * 43758.5453;
@@ -111,6 +136,16 @@ async function main() {
       "utf-8"
     );
     console.log(`Wrote data/wind.json (${wind.time.length} hourly points)`);
+  }
+
+  if (!demandOnly) {
+    const solar = await fetchSolar();
+    await writeFile(
+      path.join(dataDir, "solar.json"),
+      JSON.stringify(solar),
+      "utf-8"
+    );
+    console.log(`Wrote data/solar.json (${solar.time.length} hourly points)`);
   }
 
   const demand = generateDemand(wind.time);
