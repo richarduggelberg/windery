@@ -13,6 +13,15 @@ const COAL_BASELINE_MW = 0;
 const HYDRO_BASELINE_MW = 16500;
 const GAS_BASELINE_MW = 0;
 
+// Swedish hydro is inflow/reservoir-limited, not freely dispatchable like gas: nameplate capacity could
+// theoretically produce ~144 TWh/year (16.5 GW * 8760h), but actual "normal year" generation is only
+// ~65 TWh, because output is capped by how much water flows into reservoirs, not just turbine capacity.
+const HYDRO_ANNUAL_ENERGY_TWH_BASELINE = 65;
+const HYDRO_RESERVOIR_TWH_BASELINE = 34; // approx. total Swedish hydro reservoir storage capacity
+// Illustrative Swedish hydro inflow seasonality (snowmelt-driven spring peak, secondary autumn rain
+// bump, low winter inflow), as relative weights per calendar month; normalized to the annual energy total.
+const HYDRO_MONTHLY_INFLOW_WEIGHTS = [0.5, 0.45, 0.55, 1.6, 2.2, 1.7, 1.1, 0.9, 0.9, 1.0, 0.85, 0.6];
+
 // Battery slider moves through these discrete TWh notches (index-based) rather than a linear scale.
 const BATTERY_CAPACITY_STEPS_TWH = [0, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 150];
 
@@ -27,6 +36,15 @@ function windCapacityFactor(speedMs) {
 const SOLAR_RATED_WM2 = 1000;
 function solarCapacityFactor(irradianceWm2) {
   return Math.min(1, Math.max(0, irradianceWm2) / SOLAR_RATED_WM2);
+}
+
+// Builds an hourly reservoir-inflow series (MW, i.e. MWh over a 1-hour step) shaped by
+// HYDRO_MONTHLY_INFLOW_WEIGHTS, scaled so the full year sums to annualEnergyMWh.
+function hydroInflowSeries(time, annualEnergyMWh) {
+  const months = time.map((iso) => Number(iso.slice(5, 7)) - 1);
+  const totalWeight = months.reduce((sum, m) => sum + HYDRO_MONTHLY_INFLOW_WEIGHTS[m], 0);
+  const energyPerWeight = totalWeight > 0 ? annualEnergyMWh / totalWeight : 0;
+  return months.map((m) => HYDRO_MONTHLY_INFLOW_WEIGHTS[m] * energyPerWeight);
 }
 
 // Downsample a series to daily means for readable charts (data stays hourly for simulation).
@@ -131,33 +149,47 @@ function runSimulation(
   solarCapacityMW,
   batteryCapacityMWh,
   baseloadMW,
-  variableCapacityMW
+  hydroCapacityMW,
+  hydroInflowMW,
+  hydroReservoirCapMWh,
+  gasCapacityMW
 ) {
   const totalHours = windSpeed.length;
   const windGenMW = new Array(totalHours);
   const solarGenMW = new Array(totalHours);
   const batteryDischargeMW = new Array(totalHours);
-  const variableGenMW = new Array(totalHours);
+  const hydroGenMW = new Array(totalHours);
+  const gasGenMW = new Array(totalHours);
+  const reservoirMWh = new Array(totalHours);
   const socMWh = new Array(totalHours);
   const unmet = new Uint8Array(totalHours);
   const exportMW = new Array(totalHours); // curtailed surplus beyond battery headroom
-  const importMW = new Array(totalHours); // deficit left uncovered by base+wind+battery+variable
+  const importMW = new Array(totalHours); // deficit left uncovered by base+wind+solar+battery+hydro+gas
   let soc = 0; // batteries start empty
+  // Reservoirs start roughly two-thirds full, a reasonable level for a Swedish hydro system heading
+  // into January after autumn rains, before the spring snowmelt refill and winter/spring drawdown.
+  let reservoir = hydroReservoirCapMWh * 0.65;
 
-  // Demand is met additively, in priority order: base, then wind+solar, then battery, then variable (last resort).
+  // Demand is met additively, in priority order: base, then wind+solar, then battery, then hydro
+  // (limited by its reservoir), then gas (last resort, freely dispatchable up to its own capacity).
   for (let i = 0; i < totalHours; i++) {
     const windGen = windCapacityMW * windCapacityFactor(windSpeed[i]);
     const solarGen = solarCapacityMW * solarCapacityFactor(solarIrradiance[i]);
     const firmGen = windGen + solarGen + baseloadMW; // base + wind + solar, none of it is dispatchable
     const demand = demandMW[i];
     const net = firmGen - demand; // MW over a 1-hour step == MWh
+
+    // Reservoirs refill from natural inflow regardless of demand; once full, extra inflow spills.
+    reservoir = Math.min(hydroReservoirCapMWh, reservoir + hydroInflowMW[i]);
+
     let discharge = 0;
-    let variableGen = 0;
+    let hydroGen = 0;
+    let gasGen = 0;
     let curtailed = 0;
     let unmetMW = 0;
 
     if (net >= 0) {
-      // Surplus base + wind + solar generation charges the battery; variable capacity never charges it.
+      // Surplus base + wind + solar generation charges the battery; hydro/gas never charge it.
       const surplus = net;
       const chargeFromSurplus = Math.min(surplus, batteryCapacityMWh - soc);
       soc += chargeFromSurplus;
@@ -169,9 +201,14 @@ function runSimulation(
       soc -= discharge;
       deficit -= discharge;
 
-      // Dispatchable gas/hydro is the last resort, covering only what base + wind + solar + battery couldn't.
-      variableGen = Math.min(deficit, variableCapacityMW);
-      deficit -= variableGen;
+      // Hydro is capped by both turbine capacity and available reservoir energy (its "fuel").
+      hydroGen = Math.min(deficit, hydroCapacityMW, reservoir);
+      reservoir -= hydroGen;
+      deficit -= hydroGen;
+
+      // Gas is the true last resort: freely dispatchable up to its own capacity (fuel always available).
+      gasGen = Math.min(deficit, gasCapacityMW);
+      deficit -= gasGen;
       if (deficit > 0) {
         unmet[i] = 1;
         unmetMW = deficit; // treated as imported from outside the modeled system
@@ -180,13 +217,26 @@ function runSimulation(
     windGenMW[i] = windGen;
     solarGenMW[i] = solarGen;
     batteryDischargeMW[i] = discharge;
-    variableGenMW[i] = variableGen;
+    hydroGenMW[i] = hydroGen;
+    gasGenMW[i] = gasGen;
+    reservoirMWh[i] = reservoir;
     socMWh[i] = soc;
     exportMW[i] = curtailed;
     importMW[i] = unmetMW;
   }
 
-  return { windGenMW, solarGenMW, batteryDischargeMW, variableGenMW, socMWh, unmet, exportMW, importMW };
+  return {
+    windGenMW,
+    solarGenMW,
+    batteryDischargeMW,
+    hydroGenMW,
+    gasGenMW,
+    reservoirMWh,
+    socMWh,
+    unmet,
+    exportMW,
+    importMW,
+  };
 }
 
 async function loadJSON(path) {
@@ -482,7 +532,10 @@ async function main() {
     const hydroMW = HYDRO_BASELINE_MW * (Number(hydroCapacityInput.value) / 100);
     const gasMW = Number(gasCapacityInput.value) * 1000;
     const baseloadMW = nuclearMW + coalMW;
-    const variableCapacityMW = hydroMW + gasMW;
+    // Hydro's reservoir/inflow scale with its capacity slider, same as the installed-MW baseline ratio.
+    const hydroReservoirCapMWh = HYDRO_RESERVOIR_TWH_BASELINE * 1e6 * (hydroMW / HYDRO_BASELINE_MW);
+    const hydroAnnualInflowMWh = HYDRO_ANNUAL_ENERGY_TWH_BASELINE * 1e6 * (hydroMW / HYDRO_BASELINE_MW);
+    const hydroInflowMW = hydroInflowSeries(wind.time, hydroAnnualInflowMWh);
     windCapacityValue.textContent = `${windCapacityInput.value}% (${formatQuantity(windCapacityMW, "MW")})`;
     solarCapacityValue.textContent = `${solarCapacityInput.value}% (${formatQuantity(solarCapacityMW, "MW")})`;
     batteryCapacityValue.textContent = formatQuantity(batteryCapacityMWh, "MWh");
@@ -493,7 +546,18 @@ async function main() {
 
     // Always simulate the full year so battery state of charge carries over correctly,
     // then slice down to the selected window for display and the probability figure.
-    const { windGenMW, solarGenMW, batteryDischargeMW, variableGenMW, socMWh, unmet, exportMW, importMW } = runSimulation(
+    const {
+      windGenMW,
+      solarGenMW,
+      batteryDischargeMW,
+      hydroGenMW,
+      gasGenMW,
+      reservoirMWh,
+      socMWh,
+      unmet,
+      exportMW,
+      importMW,
+    } = runSimulation(
       wind.windSpeed100m,
       solar.shortwaveRadiation,
       scaledDemandMW,
@@ -501,15 +565,11 @@ async function main() {
       solarCapacityMW,
       batteryCapacityMWh,
       baseloadMW,
-      variableCapacityMW
+      hydroMW,
+      hydroInflowMW,
+      hydroReservoirCapMWh,
+      gasMW
     );
-
-    // Hydro and gas share one dispatchable pool in the simulation; split its output between them
-    // proportionally to their installed capacity so each gets its own chart curve.
-    const hydroShare = variableCapacityMW > 0 ? hydroMW / variableCapacityMW : 0;
-    const gasShare = variableCapacityMW > 0 ? gasMW / variableCapacityMW : 0;
-    const hydroGenMW = variableGenMW.map((v) => v * hydroShare);
-    const gasGenMW = variableGenMW.map((v) => v * gasShare);
 
     const windResampled = resample(wind.time, windGenMW, period, start, end);
     const solarResampled = resample(wind.time, solarGenMW, period, start, end);
@@ -540,7 +600,7 @@ async function main() {
     const y1Tier = unitTier(Math.max(batteryCapacityMWh, 0, ...socResampled.values));
     const y1Unit = scaledUnit("MWh", y1Tier.idx);
 
-    // Red where base + wind + solar alone fall short of demand (battery/variable had to cover the rest),
+    // Red where base + wind + solar alone fall short of demand (battery/hydro/gas had to cover the rest),
     // green where base + wind + solar exceed demand (surplus charges the battery or is exported).
     const gapColors = firmGenSeries.map((firmGen, i) =>
       firmGen < demandResampled.values[i] ? "rgba(196, 69, 54, 0.25)" : "rgba(76, 154, 90, 0.25)"
@@ -579,7 +639,7 @@ async function main() {
     probabilityEl.textContent = `${(probability * 100).toFixed(1)}%`;
     probabilityNoteEl.textContent =
       `Share of the ${windowHours.toLocaleString()} hourly intervals ${PERIODS[period].preposition} ${PERIODS[period].label} ` +
-      `where base, wind, solar, battery discharge, and variable generation together fully cover demand. Batteries start the year empty.`;
+      `where base, wind, solar, battery discharge, and hydro/gas generation together fully cover demand. Batteries start the year empty.`;
 
     // Installed mix: each source's share of total installed generation capacity (battery excluded, different unit).
     const totalInstalledMW = nuclearMW + coalMW + windCapacityMW + solarCapacityMW + hydroMW + gasMW;
@@ -590,8 +650,8 @@ async function main() {
     const usedPct = (avgMW, installedMW) => (installedMW > 0 ? (avgMW / installedMW) * 100 : 0);
 
     // Curtailment (export) comes out of base + wind + solar's surplus; wind and solar are curtailed
-    // first (split between them by their own generation), then base, since variable (hydro/gas)
-    // capacity never runs during a surplus so it's never curtailed.
+    // first (split between them by their own generation), then base, since hydro/gas capacity never
+    // runs during a surplus so it's never curtailed.
     const exportAvgMW = windowAverage(exportMW);
     const windAvgMW = windowAverage(windGenMW);
     const solarAvgMW = windowAverage(solarGenMW);
@@ -626,18 +686,18 @@ async function main() {
     capSolarShare.textContent = `${sharePct(solarCapacityMW).toFixed(0)}%`;
     capSolarUsed.textContent = `${usedPct(solarAvgMW, solarCapacityMW).toFixed(0)}%${exportedNote(solarExportAvgMW, solarCapacityMW)}`;
 
-    // Hydro and gas share one dispatchable pool in the simulation, so both are assumed used at the pool's
-    // overall utilization rate (there's no way to attribute dispatch to one vs. the other individually).
-    const variableAvgMW = windowAverage(variableGenMW);
-    const variableUsedPct = usedPct(variableAvgMW, variableCapacityMW);
+    // Hydro's output is capped by its reservoir (see runSimulation), so its utilization can be well
+    // below 100% even at high demand; gas remains freely dispatchable up to its own capacity.
+    const hydroAvgMW = windowAverage(hydroGenMW);
+    const gasAvgMW = windowAverage(gasGenMW);
 
     capHydroInstalled.textContent = formatQuantity(hydroMW, "MW");
     capHydroShare.textContent = `${sharePct(hydroMW).toFixed(0)}%`;
-    capHydroUsed.textContent = `${variableUsedPct.toFixed(0)}%`;
+    capHydroUsed.textContent = `${usedPct(hydroAvgMW, hydroMW).toFixed(0)}%`;
 
     capGasInstalled.textContent = formatQuantity(gasMW, "MW");
     capGasShare.textContent = `${sharePct(gasMW).toFixed(0)}%`;
-    capGasUsed.textContent = `${variableUsedPct.toFixed(0)}%`;
+    capGasUsed.textContent = `${usedPct(gasAvgMW, gasMW).toFixed(0)}%`;
 
     // Battery has no "installed mix" share (it stores energy rather than generating it); "used" is its
     // average state of charge over the window, as a share of its own energy capacity.
@@ -649,8 +709,6 @@ async function main() {
     // generation before any curtailment, hydro/gas dispatched output, battery discharge) as a share
     // of total generation. Exported energy is included here (it was generated), not split out.
     const dischargeAvgMW = windowAverage(batteryDischargeMW);
-    const hydroAvgMW = variableAvgMW * (variableCapacityMW > 0 ? hydroMW / variableCapacityMW : 0);
-    const gasAvgMW = variableAvgMW * (variableCapacityMW > 0 ? gasMW / variableCapacityMW : 0);
     const totalGenAvgMW = nuclearMW + coalMW + windAvgMW + solarAvgMW + hydroAvgMW + gasAvgMW + dischargeAvgMW;
     const genSharePct = (avgMW) => (totalGenAvgMW > 0 ? (avgMW / totalGenAvgMW) * 100 : 0);
 
@@ -663,7 +721,7 @@ async function main() {
     capBatteryGenShare.textContent = `${genSharePct(dischargeAvgMW).toFixed(0)}%`;
 
     // Share of actual usage: how much of demand was met by each source, plus imports for any deficit
-    // that base + wind + solar + battery + variable couldn't cover. Never affects the probability figure above.
+    // that base + wind + solar + battery + hydro + gas couldn't cover. Never affects the probability figure above.
     const totalHours = windGenMW.length;
     const baseUsedMW = new Array(totalHours);
     const windSolarUsedMW = new Array(totalHours);

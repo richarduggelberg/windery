@@ -118,7 +118,7 @@
               <td id="capSolarUsageShare"></td>
             </tr>
             <tr>
-              <td>Hydro (variable)</td>
+              <td>Hydro (reservoir-limited)</td>
               <td id="capHydroInstalled"></td>
               <td id="capHydroShare"></td>
               <td id="capHydroUsed"></td>
@@ -173,12 +173,14 @@
       technology in Sweden — the slider lets you explore adding large-scale storage, and the coal/gas sliders let you
       explore adding dispatchable fossil capacity that Sweden currently lacks). Demand is met additively, in priority
       order: base capacity (nuclear + coal combined) generates a constant output at all times, wind and solar add on
-      top of that, the battery discharges to cover any remaining deficit, and variable capacity (hydro + gas
-      combined) is the last resort, dispatching only what wind, solar, base, and the battery couldn't. Only surplus
-      base + wind + solar generation charges the battery — variable capacity never charges it. The chart shades the
-      gap between base + wind + solar generation and demand red where they fall short (battery/variable had to help)
-      and green where there's a surplus (charging the battery or exporting). Battery is modeled with unlimited
-      charge/discharge power and a simple energy cap.
+      top of that, the battery discharges to cover any remaining deficit, then hydro, then gas (last resort),
+      dispatching only what wind, solar, base, and the battery couldn't. Unlike gas, hydro isn't freely dispatchable:
+      it draws down a simulated reservoir that only refills from a synthetic seasonal inflow (snowmelt-heavy spring,
+      low winter), so sustained heavy use can run the reservoir dry even with installed turbine capacity to spare.
+      Only surplus base + wind + solar generation charges the battery — hydro/gas never charge it (hydro's reservoir
+      is refilled only by its own inflow). The chart shades the gap between base + wind + solar generation and demand
+      red where they fall short (battery/hydro/gas had to help) and green where there's a surplus (charging the
+      battery or exporting). Battery is modeled with unlimited charge/discharge power and a simple energy cap.
     </p>
 
     <section class="assumptions">
@@ -222,7 +224,7 @@
               <td>LCOE, incl. grid connection</td>
             </tr>
             <tr>
-              <td>Hydro (variable)</td>
+              <td>Hydro (reservoir-limited)</td>
               <td>
                 <input type="number" id="costHydro" value="45" min="0" step="1"> billion SEK / GW
               </td>
@@ -290,7 +292,7 @@
               <td id="costSekSolar"></td>
             </tr>
             <tr>
-              <td>Hydro (variable)</td>
+              <td>Hydro (reservoir-limited)</td>
               <td id="costAddedHydro"></td>
               <td id="costSekHydro"></td>
             </tr>
