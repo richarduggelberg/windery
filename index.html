@@ -3,13 +3,54 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Windery</title>
+  <title>Windery — Wind + Battery Grid Simulation</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <main>
+  <header>
     <h1>Windery</h1>
-    <p>🚧 Coming soon — this page is under construction.</p>
+    <p class="subtitle">Simulating wind + battery vs. electricity demand — Stockholm, Sweden (2024, hourly)</p>
+  </header>
+
+  <main>
+    <section class="charts">
+      <div class="chart-card">
+        <h2>Wind speed (100&nbsp;m hub height)</h2>
+        <canvas id="windChart"></canvas>
+      </div>
+      <div class="chart-card">
+        <h2>Electricity demand</h2>
+        <canvas id="demandChart"></canvas>
+      </div>
+    </section>
+
+    <section class="controls">
+      <div class="control">
+        <label for="windCapacity">Installed wind capacity: <span id="windCapacityValue"></span> MW</label>
+        <input type="range" id="windCapacity" min="0" max="30000" step="100" value="5000">
+      </div>
+      <div class="control">
+        <label for="batteryCapacity">Installed battery capacity: <span id="batteryCapacityValue"></span> MWh</label>
+        <input type="range" id="batteryCapacity" min="0" max="20000" step="100" value="2000">
+      </div>
+    </section>
+
+    <section class="result">
+      <div class="probability-card">
+        <span class="probability-label">Probability the combination meets demand</span>
+        <span id="probability" class="probability-value">–</span>
+        <span class="probability-note">Share of the 8,784 hourly intervals in 2024 where wind generation plus battery discharge fully covers demand.</span>
+      </div>
+    </section>
+
+    <p class="disclaimer">
+      Wind speed data: Open-Meteo historical archive (ERA5) for Stockholm. Demand is a synthetic, illustrative profile
+      (not real metered data) with realistic daily/weekly/seasonal shape. Battery is modeled with unlimited charge/discharge
+      power and a simple energy cap.
+    </p>
   </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script src="app.js"></script>
 </body>
 </html>
