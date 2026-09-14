@@ -50,31 +50,46 @@ function hourlyLabel(iso) {
   return iso.replace("T", " ");
 }
 
-function runSimulation(windSpeed, demandMW, windCapacityMW, batteryCapacityMWh) {
+function runSimulation(
+  windSpeed,
+  demandMW,
+  windCapacityMW,
+  batteryCapacityMWh,
+  baseloadMW,
+  variableCapacityMW
+) {
   const totalHours = windSpeed.length;
   const generationMW = new Array(totalHours);
+  const variableGenMW = new Array(totalHours);
   const socMWh = new Array(totalHours);
   const unmet = new Uint8Array(totalHours);
   let soc = batteryCapacityMWh; // batteries start fully charged
 
   for (let i = 0; i < totalHours; i++) {
-    const generation = windCapacityMW * windCapacityFactor(windSpeed[i]);
+    const windGen = windCapacityMW * windCapacityFactor(windSpeed[i]);
+    const generation = windGen + baseloadMW; // baseload runs constantly
     const demand = demandMW[i];
     const net = generation - demand; // MW over a 1-hour step == MWh
+    let variableGen = 0;
+
     if (net >= 0) {
       const chargeRoom = batteryCapacityMWh - soc;
       soc += Math.min(net, chargeRoom);
     } else {
-      const deficit = -net;
+      let deficit = -net;
       const discharge = Math.min(deficit, soc);
       soc -= discharge;
-      if (generation + discharge < demand) unmet[i] = 1;
+      deficit -= discharge;
+      variableGen = Math.min(deficit, variableCapacityMW); // dispatchable gas/hydro fills the rest
+      deficit -= variableGen;
+      if (deficit > 0) unmet[i] = 1;
     }
-    generationMW[i] = generation;
+    generationMW[i] = windGen;
+    variableGenMW[i] = variableGen;
     socMWh[i] = soc;
   }
 
-  return { generationMW, socMWh, unmet };
+  return { generationMW, variableGenMW, socMWh, unmet };
 }
 
 async function loadJSON(path) {
@@ -92,8 +107,12 @@ async function main() {
   const periodInput = document.getElementById("period");
   const windCapacityInput = document.getElementById("windCapacity");
   const batteryCapacityInput = document.getElementById("batteryCapacity");
+  const baseloadCapacityInput = document.getElementById("baseloadCapacity");
+  const variableCapacityInput = document.getElementById("variableCapacity");
   const windCapacityValue = document.getElementById("windCapacityValue");
   const batteryCapacityValue = document.getElementById("batteryCapacityValue");
+  const baseloadCapacityValue = document.getElementById("baseloadCapacityValue");
+  const variableCapacityValue = document.getElementById("variableCapacityValue");
   const probabilityEl = document.getElementById("probability");
   const probabilityNoteEl = document.getElementById("probabilityNote");
 
@@ -118,6 +137,23 @@ async function main() {
           label: "Wind generation (MW)",
           data: [],
           borderColor: "#2b7a78",
+          pointRadius: 0,
+          borderWidth: 1.5,
+          yAxisID: "y",
+        },
+        {
+          label: "Base generation (MW)",
+          data: [],
+          borderColor: "#7a5c2b",
+          borderDash: [4, 3],
+          pointRadius: 0,
+          borderWidth: 1.5,
+          yAxisID: "y",
+        },
+        {
+          label: "Variable generation used (MW)",
+          data: [],
+          borderColor: "#e0a458",
           pointRadius: 0,
           borderWidth: 1.5,
           yAxisID: "y",
@@ -159,29 +195,39 @@ async function main() {
   function update() {
     const windCapacityMW = Number(windCapacityInput.value);
     const batteryCapacityMWh = Number(batteryCapacityInput.value);
+    const baseloadMW = Number(baseloadCapacityInput.value);
+    const variableCapacityMW = Number(variableCapacityInput.value);
     const period = periodInput.value;
     windCapacityValue.textContent = windCapacityMW.toLocaleString();
     batteryCapacityValue.textContent = batteryCapacityMWh.toLocaleString();
+    baseloadCapacityValue.textContent = baseloadMW.toLocaleString();
+    variableCapacityValue.textContent = variableCapacityMW.toLocaleString();
 
     // Always simulate the full year so battery state of charge carries over correctly,
     // then slice down to the selected window for display and the probability figure.
-    const { generationMW, socMWh, unmet } = runSimulation(
+    const { generationMW, variableGenMW, socMWh, unmet } = runSimulation(
       wind.windSpeed100m,
       demand.demandMW,
       windCapacityMW,
-      batteryCapacityMWh
+      batteryCapacityMWh,
+      baseloadMW,
+      variableCapacityMW
     );
 
     const [start, end] = periodIndexRange(wind.time, period);
 
     const genResampled = resample(wind.time, generationMW, period, start, end);
+    const variableResampled = resample(wind.time, variableGenMW, period, start, end);
     const socResampled = resample(wind.time, socMWh, period, start, end);
     const demandResampled = resample(demand.time, demand.demandMW, period, start, end);
+    const baseloadSeries = new Array(genResampled.values.length).fill(baseloadMW);
 
     chart.data.labels = demandResampled.labels;
     chart.data.datasets[0].data = genResampled.values;
-    chart.data.datasets[1].data = demandResampled.values;
-    chart.data.datasets[2].data = socResampled.values;
+    chart.data.datasets[1].data = baseloadSeries;
+    chart.data.datasets[2].data = variableResampled.values;
+    chart.data.datasets[3].data = demandResampled.values;
+    chart.data.datasets[4].data = socResampled.values;
     chart.options.scales.y1.max = batteryCapacityMWh;
     chart.update("none");
 
@@ -191,12 +237,14 @@ async function main() {
     probabilityEl.textContent = `${(probability * 100).toFixed(1)}%`;
     probabilityNoteEl.textContent =
       `Share of the ${windowHours.toLocaleString()} hourly intervals ${PERIODS[period].preposition} ${PERIODS[period].label} ` +
-      `where wind generation plus battery discharge fully covers demand. Batteries start the year fully charged.`;
+      `where wind, base, variable generation, and battery discharge together fully cover demand. Batteries start the year fully charged.`;
   }
 
   periodInput.addEventListener("change", update);
   windCapacityInput.addEventListener("input", update);
   batteryCapacityInput.addEventListener("input", update);
+  baseloadCapacityInput.addEventListener("input", update);
+  variableCapacityInput.addEventListener("input", update);
   update();
 }
 
