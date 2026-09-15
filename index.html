@@ -249,8 +249,10 @@
           capacity — base, wind, solar, and hydro are never scarce enough to set the price themselves, but their
           output determines how big that hour's deficit or surplus is. Nuclear, coal, wind, solar, and hydro are
           valued at their own fuel + O&amp;M cost above (what it actually costs to run them); gas, battery
-          discharge, imports, and exports are valued at that hour's price instead, since they're the
-          flexible/traded side of the system. Exports are shown as negative (revenue, not cost).
+          discharge, and imports are valued at that hour's price instead, since they're the flexible/traded side
+          of the system. Exports are shown as negative (revenue, not cost), but their price tails off as the
+          exported volume grows, since neighboring markets' own demand for extra imported power has diminishing
+          returns too — dumping a lot of surplus abroad at once doesn't fetch the full domestic price for all of it.
         </p>
         <table id="householdCostTable" class="data-table">
           <thead>

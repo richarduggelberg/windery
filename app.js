@@ -991,10 +991,19 @@ async function main() {
       return sum;
     };
     // Exports are sold into the wider regional market, not at the (sometimes negative) domestic
-    // curtailment price, so they're floored at 0 — always a revenue, never an extra cost.
-    const windowRevenueSEK = (genArray) => {
+    // curtailment price, so they're floored at 0 — always a revenue, never an extra cost. Neighboring
+    // markets' own demand for imported surplus has diminishing returns too, though: the first bit of
+    // export sells near the full domestic price, but as the exported volume grows relative to a rough
+    // interconnector-capacity scale, the marginal price it fetches abroad tails off (saturating demand
+    // curve), instead of staying flat no matter how much is dumped on neighboring grids.
+    const exportSaturationMW = avgDemandMW * 0.5;
+    const exportRevenueSEK = (genArray) => {
       let sum = 0;
-      for (let i = start; i < end; i++) sum += genArray[i] * Math.max(priceSekMwh[i], 0);
+      for (let i = start; i < end; i++) {
+        const basePrice = Math.max(priceSekMwh[i], 0);
+        const effectivePrice = basePrice / (1 + genArray[i] / exportSaturationMW);
+        sum += genArray[i] * effectivePrice;
+      }
       return sum;
     };
     const marginalNuclear = Number(costMarginalNuclearInput.value);
@@ -1010,7 +1019,7 @@ async function main() {
     const gasOpCostSEK = windowValueSEK(gasGenMW);
     const batteryOpCostSEK = windowValueSEK(batteryDischargeMW);
     const importOpCostSEK = windowValueSEK(importMW);
-    const exportOpCostSEK = -windowRevenueSEK(exportMW);
+    const exportOpCostSEK = -exportRevenueSEK(exportMW);
     const totalOpCostSEK =
       nuclearOpCostSEK +
       coalOpCostSEK +
