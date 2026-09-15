@@ -252,6 +252,35 @@
           discharge, imports, and exports are valued at that hour's price instead, since they're the
           flexible/traded side of the system. Exports are shown as negative (revenue, not cost).
         </p>
+        <table id="householdCostTable" class="data-table">
+          <thead>
+            <tr>
+              <th>Household type</th>
+              <th>Assumed annual demand</th>
+              <th>Demand this period</th>
+              <th>Cost this period</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Average apartment</td>
+              <td><input type="number" id="householdApartmentAnnualKwh" value="2000" min="0" step="100"> kWh/yr</td>
+              <td id="householdApartmentDemand"></td>
+              <td id="householdApartmentCost"></td>
+            </tr>
+            <tr>
+              <td>Average house (electric heating)</td>
+              <td><input type="number" id="householdHouseAnnualKwh" value="20000" min="0" step="500"> kWh/yr</td>
+              <td id="householdHouseDemand"></td>
+              <td id="householdHouseCost"></td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="assumptions-note">
+          Illustrative only: each annual demand assumption is prorated to the selected period and multiplied by
+          the average simulated price above — not a real household bill (grid fees, taxes, and the actual hourly
+          shape of a household's own usage are all excluded).
+        </p>
       </div>
     </section>
 

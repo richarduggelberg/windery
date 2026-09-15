@@ -371,6 +371,12 @@ async function main() {
   const opGenExport = document.getElementById("opGenExport");
   const opCostExport = document.getElementById("opCostExport");
   const opCostTotal = document.getElementById("opCostTotal");
+  const householdApartmentAnnualKwhInput = document.getElementById("householdApartmentAnnualKwh");
+  const householdHouseAnnualKwhInput = document.getElementById("householdHouseAnnualKwh");
+  const householdApartmentDemandEl = document.getElementById("householdApartmentDemand");
+  const householdApartmentCostEl = document.getElementById("householdApartmentCost");
+  const householdHouseDemandEl = document.getElementById("householdHouseDemand");
+  const householdHouseCostEl = document.getElementById("householdHouseCost");
 
   // The fetched profile already represents Sweden's current nationwide demand; the slider scales it up/down from there.
   const baseAnnualDemandMWh = demand.demandMW.reduce((a, b) => a + b, 0);
@@ -984,6 +990,13 @@ async function main() {
       for (let i = start; i < end; i++) sum += genArray[i] * priceSekMwh[i];
       return sum;
     };
+    // Exports are sold into the wider regional market, not at the (sometimes negative) domestic
+    // curtailment price, so they're floored at 0 — always a revenue, never an extra cost.
+    const windowRevenueSEK = (genArray) => {
+      let sum = 0;
+      for (let i = start; i < end; i++) sum += genArray[i] * Math.max(priceSekMwh[i], 0);
+      return sum;
+    };
     const marginalNuclear = Number(costMarginalNuclearInput.value);
     const marginalCoal = Number(costMarginalCoalInput.value);
     const marginalWind = Number(costMarginalWindInput.value);
@@ -997,7 +1010,7 @@ async function main() {
     const gasOpCostSEK = windowValueSEK(gasGenMW);
     const batteryOpCostSEK = windowValueSEK(batteryDischargeMW);
     const importOpCostSEK = windowValueSEK(importMW);
-    const exportOpCostSEK = -windowValueSEK(exportMW);
+    const exportOpCostSEK = -windowRevenueSEK(exportMW);
     const totalOpCostSEK =
       nuclearOpCostSEK +
       coalOpCostSEK +
@@ -1033,6 +1046,17 @@ async function main() {
     const avgHistPriceMwh = historicalPriceSekMwh.slice(start, end).reduce((a, b) => a + b, 0) / windowHours;
     avgSimPriceEl.textContent = `${avgSimPriceMwh.toFixed(0)} SEK/MWh`;
     avgHistPriceEl.textContent = `${avgHistPriceMwh.toFixed(0)} SEK/MWh`;
+
+    // Illustrative household cost: annual demand assumption prorated to the selected period, at the
+    // average simulated price (not a real bill — no grid fees, taxes, or household usage-shape effects).
+    const apartmentAnnualKwh = Number(householdApartmentAnnualKwhInput.value);
+    const houseAnnualKwh = Number(householdHouseAnnualKwhInput.value);
+    const apartmentDemandMWh = (apartmentAnnualKwh / 1000) * (windowHours / totalHours);
+    const houseDemandMWh = (houseAnnualKwh / 1000) * (windowHours / totalHours);
+    householdApartmentDemandEl.textContent = formatQuantity(apartmentDemandMWh, "MWh");
+    householdApartmentCostEl.textContent = formatSEK(apartmentDemandMWh * avgSimPriceMwh);
+    householdHouseDemandEl.textContent = formatQuantity(houseDemandMWh, "MWh");
+    householdHouseCostEl.textContent = formatSEK(houseDemandMWh * avgSimPriceMwh);
 
     // Build cost: only capacity currently above each source's already-installed baseline counts,
     // computed from the slider's current position so lowering it back down reduces cost accordingly.
@@ -1108,6 +1132,8 @@ async function main() {
   costPriceHydroTopInput.addEventListener("input", update);
   costPriceGasTopInput.addEventListener("input", update);
   costPriceScarcityInput.addEventListener("input", update);
+  householdApartmentAnnualKwhInput.addEventListener("input", update);
+  householdHouseAnnualKwhInput.addEventListener("input", update);
   rebuildWeekOptions();
   rebuildDayOptions();
   update();
