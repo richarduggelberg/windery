@@ -474,6 +474,8 @@
               <th>Source</th>
               <th>Capacity added</th>
               <th>Cost</th>
+              <th>Profit (yearly)</th>
+              <th>Profit at full capacity (yearly)</th>
               <th>Payoff time</th>
             </tr>
           </thead>
@@ -482,48 +484,64 @@
               <td>Nuclear (base)</td>
               <td id="costAddedNuclear"></td>
               <td id="costSekNuclear"></td>
+              <td id="costProfitNuclear"></td>
+              <td id="costProfitFullNuclear"></td>
               <td id="costPayoffNuclear"></td>
             </tr>
             <tr>
               <td>Coal (base)</td>
               <td id="costAddedCoal"></td>
               <td id="costSekCoal"></td>
+              <td id="costProfitCoal"></td>
+              <td id="costProfitFullCoal"></td>
               <td id="costPayoffCoal"></td>
             </tr>
             <tr>
               <td>Wind</td>
               <td id="costAddedWind"></td>
               <td id="costSekWind"></td>
+              <td id="costProfitWind"></td>
+              <td id="costProfitFullWind"></td>
               <td id="costPayoffWind"></td>
             </tr>
             <tr>
               <td>Solar</td>
               <td id="costAddedSolar"></td>
               <td id="costSekSolar"></td>
+              <td id="costProfitSolar"></td>
+              <td id="costProfitFullSolar"></td>
               <td id="costPayoffSolar"></td>
             </tr>
             <tr>
               <td>Hydro (variable)</td>
               <td id="costAddedHydro"></td>
               <td id="costSekHydro"></td>
+              <td id="costProfitHydro"></td>
+              <td id="costProfitFullHydro"></td>
               <td id="costPayoffHydro"></td>
             </tr>
             <tr>
               <td>Gas (variable)</td>
               <td id="costAddedGas"></td>
               <td id="costSekGas"></td>
+              <td id="costProfitGas"></td>
+              <td id="costProfitFullGas"></td>
               <td id="costPayoffGas"></td>
             </tr>
             <tr>
               <td>Battery storage</td>
               <td id="costAddedBattery"></td>
               <td id="costSekBattery"></td>
+              <td id="costProfitBattery"></td>
+              <td id="costProfitFullBattery"></td>
               <td id="costPayoffBattery"></td>
             </tr>
             <tr class="total-row">
               <td>Total</td>
               <td></td>
               <td id="costSekTotal"></td>
+              <td id="costProfitTotal"></td>
+              <td id="costProfitFullTotal"></td>
               <td id="costPayoffTotal"></td>
             </tr>
           </tbody>
@@ -531,15 +549,19 @@
         <p class="assumptions-note">
           Only capacity currently above each slider's default (already-installed) level counts toward this cost,
           using the assumptions above. Cost tracks each slider's current position, so lowering a slider back down
-          reduces the cost accordingly. Payoff time compares that build cost to the estimated annual profit of
-          just the added capacity: generation valued at the simulated market price across every hour of the year
-          (regardless of the period selected above), minus its own fuel/O&amp;M cost from the marginal-cost
-          assumptions (for wind/solar/hydro, the added slice is assumed to earn the fleet's average profit per MW,
-          an approximation). Gas and battery have no separate fuel cost modeled, so their full market revenue
-          counts as profit — an optimistic simplification for those two. "Never" means the added capacity loses
-          money per MWh at today's simulated prices (e.g. very large build-outs can crash the price enough to make
-          more of the same source unprofitable). Illustrative only — ignores financing, degradation, taxes, and
-          future price changes.
+          reduces the cost accordingly. Profit (yearly) is the added capacity's estimated annual profit — actual
+          simulated generation valued at that hour's market price across every hour of the year (regardless of
+          the period selected above), minus its own fuel/O&amp;M cost from the marginal-cost assumptions (for
+          wind/solar/hydro, the added slice is assumed to earn the fleet's average profit per MW, an
+          approximation). This is what payoff time is calculated against. Profit at full capacity is the same
+          calculation assuming the added capacity ran at its full rated output every hour instead of its actual,
+          often much lower, utilization — exposing the gap caused by weather-limited output (wind/solar), demand
+          not actually needing all the installed backup capacity (hydro/gas), or a battery not having enough
+          surplus available to charge from (assumes one full charge/discharge cycle per day). Gas and battery
+          have no separate fuel cost modeled, so their full market revenue counts as profit — an optimistic
+          simplification for those two. "Never" means the added capacity loses money per MWh at today's simulated
+          prices (e.g. very large build-outs can crash the price enough to make more of the same source
+          unprofitable). Illustrative only — ignores financing, degradation, taxes, and future price changes.
         </p>
       </div>
     </section>

@@ -327,26 +327,42 @@ async function main() {
   const costBatteryInput = document.getElementById("costBattery");
   const costAddedNuclear = document.getElementById("costAddedNuclear");
   const costSekNuclear = document.getElementById("costSekNuclear");
+  const costProfitNuclear = document.getElementById("costProfitNuclear");
+  const costProfitFullNuclear = document.getElementById("costProfitFullNuclear");
   const costPayoffNuclear = document.getElementById("costPayoffNuclear");
   const costAddedCoal = document.getElementById("costAddedCoal");
   const costSekCoal = document.getElementById("costSekCoal");
+  const costProfitCoal = document.getElementById("costProfitCoal");
+  const costProfitFullCoal = document.getElementById("costProfitFullCoal");
   const costPayoffCoal = document.getElementById("costPayoffCoal");
   const costAddedWind = document.getElementById("costAddedWind");
   const costSekWind = document.getElementById("costSekWind");
+  const costProfitWind = document.getElementById("costProfitWind");
+  const costProfitFullWind = document.getElementById("costProfitFullWind");
   const costPayoffWind = document.getElementById("costPayoffWind");
   const costAddedSolar = document.getElementById("costAddedSolar");
   const costSekSolar = document.getElementById("costSekSolar");
+  const costProfitSolar = document.getElementById("costProfitSolar");
+  const costProfitFullSolar = document.getElementById("costProfitFullSolar");
   const costPayoffSolar = document.getElementById("costPayoffSolar");
   const costAddedHydro = document.getElementById("costAddedHydro");
   const costSekHydro = document.getElementById("costSekHydro");
+  const costProfitHydro = document.getElementById("costProfitHydro");
+  const costProfitFullHydro = document.getElementById("costProfitFullHydro");
   const costPayoffHydro = document.getElementById("costPayoffHydro");
   const costAddedGas = document.getElementById("costAddedGas");
   const costSekGas = document.getElementById("costSekGas");
+  const costProfitGas = document.getElementById("costProfitGas");
+  const costProfitFullGas = document.getElementById("costProfitFullGas");
   const costPayoffGas = document.getElementById("costPayoffGas");
   const costAddedBattery = document.getElementById("costAddedBattery");
   const costSekBattery = document.getElementById("costSekBattery");
+  const costProfitBattery = document.getElementById("costProfitBattery");
+  const costProfitFullBattery = document.getElementById("costProfitFullBattery");
   const costPayoffBattery = document.getElementById("costPayoffBattery");
   const costSekTotal = document.getElementById("costSekTotal");
+  const costProfitTotal = document.getElementById("costProfitTotal");
+  const costProfitFullTotal = document.getElementById("costProfitFullTotal");
   const costPayoffTotal = document.getElementById("costPayoffTotal");
   const costMarginalNuclearInput = document.getElementById("costMarginalNuclear");
   const costMarginalCoalInput = document.getElementById("costMarginalCoal");
@@ -1140,6 +1156,31 @@ async function main() {
       hydroAnnualProfitSEK +
       gasAnnualProfitSEK +
       batteryAnnualProfitSEK;
+
+    // Profit at full capacity: the same added capacity if it ran at its full rated output every hour of
+    // the year instead of its actual (often much lower) utilization — exposes the gap from weather-limited
+    // output (wind/solar), backup capacity demand rarely needs in full (hydro/gas), or a battery without
+    // enough surplus to charge from. Battery has no power rating (unlimited charge/discharge power per the
+    // model), so its full-capacity case instead assumes one full charge/discharge cycle every day of the year.
+    const fullCapacityProfitSEK = (addedMW, marginalCost) => addedMW * (totalPriceSumSekMwh - totalHours * marginalCost);
+    const nuclearFullProfitSEK = fullCapacityProfitSEK(addedNuclearMW, marginalNuclear);
+    const coalFullProfitSEK = fullCapacityProfitSEK(addedCoalMW, marginalCoal);
+    const windFullProfitSEK = fullCapacityProfitSEK(addedWindMW, marginalWind);
+    const solarFullProfitSEK = fullCapacityProfitSEK(addedSolarMW, marginalSolar);
+    const hydroFullProfitSEK = fullCapacityProfitSEK(addedHydroMW, marginalHydro);
+    const gasFullProfitSEK = fullCapacityProfitSEK(addedGasMW, 0);
+    const CYCLES_PER_YEAR = 365;
+    const avgFullYearPriceSekMwh = totalPriceSumSekMwh / totalHours;
+    const batteryFullProfitSEK = addedBatteryTWh * 1e6 * CYCLES_PER_YEAR * avgFullYearPriceSekMwh;
+    const totalFullProfitSEK =
+      nuclearFullProfitSEK +
+      coalFullProfitSEK +
+      windFullProfitSEK +
+      solarFullProfitSEK +
+      hydroFullProfitSEK +
+      gasFullProfitSEK +
+      batteryFullProfitSEK;
+
     const formatPayoff = (buildCostSEK, annualProfitSEK) => {
       if (buildCostSEK <= 0) return "–";
       if (annualProfitSEK <= 0) return "Never";
@@ -1149,26 +1190,42 @@ async function main() {
 
     costAddedNuclear.textContent = formatQuantity(addedNuclearMW, "MW");
     costSekNuclear.textContent = formatSEK(nuclearCostSEK);
+    costProfitNuclear.textContent = formatSEK(nuclearAnnualProfitSEK);
+    costProfitFullNuclear.textContent = formatSEK(nuclearFullProfitSEK);
     costPayoffNuclear.textContent = formatPayoff(nuclearCostSEK, nuclearAnnualProfitSEK);
     costAddedCoal.textContent = formatQuantity(addedCoalMW, "MW");
     costSekCoal.textContent = formatSEK(coalCostSEK);
+    costProfitCoal.textContent = formatSEK(coalAnnualProfitSEK);
+    costProfitFullCoal.textContent = formatSEK(coalFullProfitSEK);
     costPayoffCoal.textContent = formatPayoff(coalCostSEK, coalAnnualProfitSEK);
     costAddedWind.textContent = formatQuantity(addedWindMW, "MW");
     costSekWind.textContent = formatSEK(windCostSEK);
+    costProfitWind.textContent = formatSEK(windAnnualProfitSEK);
+    costProfitFullWind.textContent = formatSEK(windFullProfitSEK);
     costPayoffWind.textContent = formatPayoff(windCostSEK, windAnnualProfitSEK);
     costAddedSolar.textContent = formatQuantity(addedSolarMW, "MW");
     costSekSolar.textContent = formatSEK(solarCostSEK);
+    costProfitSolar.textContent = formatSEK(solarAnnualProfitSEK);
+    costProfitFullSolar.textContent = formatSEK(solarFullProfitSEK);
     costPayoffSolar.textContent = formatPayoff(solarCostSEK, solarAnnualProfitSEK);
     costAddedHydro.textContent = formatQuantity(addedHydroMW, "MW");
     costSekHydro.textContent = formatSEK(hydroCostSEK);
+    costProfitHydro.textContent = formatSEK(hydroAnnualProfitSEK);
+    costProfitFullHydro.textContent = formatSEK(hydroFullProfitSEK);
     costPayoffHydro.textContent = formatPayoff(hydroCostSEK, hydroAnnualProfitSEK);
     costAddedGas.textContent = formatQuantity(addedGasMW, "MW");
     costSekGas.textContent = formatSEK(gasCostSEK);
+    costProfitGas.textContent = formatSEK(gasAnnualProfitSEK);
+    costProfitFullGas.textContent = formatSEK(gasFullProfitSEK);
     costPayoffGas.textContent = formatPayoff(gasCostSEK, gasAnnualProfitSEK);
     costAddedBattery.textContent = formatQuantity(addedBatteryTWh * 1e6, "MWh");
     costSekBattery.textContent = formatSEK(batteryCostSEK);
+    costProfitBattery.textContent = formatSEK(batteryAnnualProfitSEK);
+    costProfitFullBattery.textContent = formatSEK(batteryFullProfitSEK);
     costPayoffBattery.textContent = formatPayoff(batteryCostSEK, batteryAnnualProfitSEK);
     costSekTotal.textContent = formatSEK(totalCostSEK);
+    costProfitTotal.textContent = formatSEK(totalAnnualProfitSEK);
+    costProfitFullTotal.textContent = formatSEK(totalFullProfitSEK);
     costPayoffTotal.textContent = formatPayoff(totalCostSEK, totalAnnualProfitSEK);
   }
 
