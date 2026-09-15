@@ -327,19 +327,27 @@ async function main() {
   const costBatteryInput = document.getElementById("costBattery");
   const costAddedNuclear = document.getElementById("costAddedNuclear");
   const costSekNuclear = document.getElementById("costSekNuclear");
+  const costPayoffNuclear = document.getElementById("costPayoffNuclear");
   const costAddedCoal = document.getElementById("costAddedCoal");
   const costSekCoal = document.getElementById("costSekCoal");
+  const costPayoffCoal = document.getElementById("costPayoffCoal");
   const costAddedWind = document.getElementById("costAddedWind");
   const costSekWind = document.getElementById("costSekWind");
+  const costPayoffWind = document.getElementById("costPayoffWind");
   const costAddedSolar = document.getElementById("costAddedSolar");
   const costSekSolar = document.getElementById("costSekSolar");
+  const costPayoffSolar = document.getElementById("costPayoffSolar");
   const costAddedHydro = document.getElementById("costAddedHydro");
   const costSekHydro = document.getElementById("costSekHydro");
+  const costPayoffHydro = document.getElementById("costPayoffHydro");
   const costAddedGas = document.getElementById("costAddedGas");
   const costSekGas = document.getElementById("costSekGas");
+  const costPayoffGas = document.getElementById("costPayoffGas");
   const costAddedBattery = document.getElementById("costAddedBattery");
   const costSekBattery = document.getElementById("costSekBattery");
+  const costPayoffBattery = document.getElementById("costPayoffBattery");
   const costSekTotal = document.getElementById("costSekTotal");
+  const costPayoffTotal = document.getElementById("costPayoffTotal");
   const costMarginalNuclearInput = document.getElementById("costMarginalNuclear");
   const costMarginalCoalInput = document.getElementById("costMarginalCoal");
   const costMarginalWindInput = document.getElementById("costMarginalWind");
@@ -1097,21 +1105,71 @@ async function main() {
     const totalCostSEK =
       nuclearCostSEK + coalCostSEK + windCostSEK + solarCostSEK + hydroCostSEK + gasCostSEK + batteryCostSEK;
 
+    // Payoff time: build cost above baseline vs. the ADDED capacity's own estimated annual profit —
+    // generation valued at the simulated market price, over ALL hours of the year (regardless of the
+    // currently selected display period), minus its own fuel/O&M cost from the assumptions above. For
+    // wind/solar/hydro, generation is assumed to scale proportionally with capacity, so the added slice's
+    // profit is the fleet's total profit times its share of installed capacity (an approximation for hydro,
+    // whose dispatch is need-based rather than purely capacity-proportional). Gas and battery have no
+    // separate fuel cost modeled, so their full market revenue counts as profit (an optimistic simplification).
+    const annualValueSEK = (genArray) => {
+      let sum = 0;
+      for (let i = 0; i < totalHours; i++) sum += genArray[i] * priceSekMwh[i];
+      return sum;
+    };
+    const addedShare = (addedMW, totalMW) => (totalMW > 0 ? addedMW / totalMW : 0);
+    const totalPriceSumSekMwh = priceSekMwh.reduce((a, b) => a + b, 0);
+    const nuclearAnnualProfitSEK = addedNuclearMW * (totalPriceSumSekMwh - totalHours * marginalNuclear);
+    const coalAnnualProfitSEK = addedCoalMW * (totalPriceSumSekMwh - totalHours * marginalCoal);
+    const windAnnualProfitSEK =
+      (annualValueSEK(windGenMW) - windGenMW.reduce((a, b) => a + b, 0) * marginalWind) *
+      addedShare(addedWindMW, windCapacityMW);
+    const solarAnnualProfitSEK =
+      (annualValueSEK(solarGenMW) - solarGenMW.reduce((a, b) => a + b, 0) * marginalSolar) *
+      addedShare(addedSolarMW, solarCapacityMW);
+    const hydroAnnualProfitSEK =
+      (annualValueSEK(hydroGenMW) - hydroGenMW.reduce((a, b) => a + b, 0) * marginalHydro) *
+      addedShare(addedHydroMW, hydroMW);
+    const gasAnnualProfitSEK = annualValueSEK(gasGenMW);
+    const batteryAnnualProfitSEK = annualValueSEK(batteryDischargeMW);
+    const totalAnnualProfitSEK =
+      nuclearAnnualProfitSEK +
+      coalAnnualProfitSEK +
+      windAnnualProfitSEK +
+      solarAnnualProfitSEK +
+      hydroAnnualProfitSEK +
+      gasAnnualProfitSEK +
+      batteryAnnualProfitSEK;
+    const formatPayoff = (buildCostSEK, annualProfitSEK) => {
+      if (buildCostSEK <= 0) return "–";
+      if (annualProfitSEK <= 0) return "Never";
+      const years = buildCostSEK / annualProfitSEK;
+      return years >= 100 ? "100+ yr" : `${years.toFixed(1)} yr`;
+    };
+
     costAddedNuclear.textContent = formatQuantity(addedNuclearMW, "MW");
     costSekNuclear.textContent = formatSEK(nuclearCostSEK);
+    costPayoffNuclear.textContent = formatPayoff(nuclearCostSEK, nuclearAnnualProfitSEK);
     costAddedCoal.textContent = formatQuantity(addedCoalMW, "MW");
     costSekCoal.textContent = formatSEK(coalCostSEK);
+    costPayoffCoal.textContent = formatPayoff(coalCostSEK, coalAnnualProfitSEK);
     costAddedWind.textContent = formatQuantity(addedWindMW, "MW");
     costSekWind.textContent = formatSEK(windCostSEK);
+    costPayoffWind.textContent = formatPayoff(windCostSEK, windAnnualProfitSEK);
     costAddedSolar.textContent = formatQuantity(addedSolarMW, "MW");
     costSekSolar.textContent = formatSEK(solarCostSEK);
+    costPayoffSolar.textContent = formatPayoff(solarCostSEK, solarAnnualProfitSEK);
     costAddedHydro.textContent = formatQuantity(addedHydroMW, "MW");
     costSekHydro.textContent = formatSEK(hydroCostSEK);
+    costPayoffHydro.textContent = formatPayoff(hydroCostSEK, hydroAnnualProfitSEK);
     costAddedGas.textContent = formatQuantity(addedGasMW, "MW");
     costSekGas.textContent = formatSEK(gasCostSEK);
+    costPayoffGas.textContent = formatPayoff(gasCostSEK, gasAnnualProfitSEK);
     costAddedBattery.textContent = formatQuantity(addedBatteryTWh * 1e6, "MWh");
     costSekBattery.textContent = formatSEK(batteryCostSEK);
+    costPayoffBattery.textContent = formatPayoff(batteryCostSEK, batteryAnnualProfitSEK);
     costSekTotal.textContent = formatSEK(totalCostSEK);
+    costPayoffTotal.textContent = formatPayoff(totalCostSEK, totalAnnualProfitSEK);
   }
 
   periodMonthInput.addEventListener("change", () => {
