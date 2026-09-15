@@ -125,17 +125,22 @@ function scaledUnit(baseUnit, idx) {
   return UNIT_PREFIXES[idx] + baseUnit.slice(1);
 }
 
-// Formats a raw SEK amount, scaling up through thousand/million/billion/trillion as needed.
+// Formats a raw SEK amount. Amounts under a million are shown as a plain number with thousands
+// separators (e.g. "12,345 SEK"); a million and up scale through million/billion/trillion as needed.
 const SEK_TIERS = ["SEK", "thousand SEK", "million SEK", "billion SEK", "trillion SEK"];
 function formatSEK(value) {
-  let idx = 0;
+  const sign = value < 0 ? "-" : "";
   let v = Math.abs(value);
-  while (v >= 1000 && idx < SEK_TIERS.length - 1) {
-    v /= 1000;
-    idx++;
+  let idx = 0;
+  if (v >= 1e6) {
+    v /= 1e6;
+    idx = 2;
+    while (v >= 1000 && idx < SEK_TIERS.length - 1) {
+      v /= 1000;
+      idx++;
+    }
   }
   const decimals = v < 10 ? 2 : v < 100 ? 1 : 0;
-  const sign = value < 0 ? "-" : "";
   return `${sign}${v.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })} ${SEK_TIERS[idx]}`;
 }
 
