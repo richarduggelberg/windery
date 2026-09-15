@@ -1058,15 +1058,18 @@ async function main() {
 
     // Illustrative household cost: annual demand assumption prorated to the selected period, at the
     // average simulated price (not a real bill — no grid fees, taxes, or household usage-shape effects).
-    // Household demand is always shown in kWh (not auto-scaled to MWh/GWh) since that's the unit households know.
+    // Prorate by the window's share of ANNUAL system demand (not just its share of hours), so household
+    // demand follows the same seasonal/weekly/daily shape as the demand curve rather than a flat average.
     const formatKwh = (kwh) => {
       const decimals = kwh < 10 ? 2 : kwh < 100 ? 1 : 0;
       return `${kwh.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })} kWh`;
     };
+    const windowDemandShare =
+      scaledDemandMW.slice(start, end).reduce((a, b) => a + b, 0) / scaledDemandMW.reduce((a, b) => a + b, 0);
     const apartmentAnnualKwh = Number(householdApartmentAnnualKwhInput.value);
     const houseAnnualKwh = Number(householdHouseAnnualKwhInput.value);
-    const apartmentDemandKwh = apartmentAnnualKwh * (windowHours / totalHours);
-    const houseDemandKwh = houseAnnualKwh * (windowHours / totalHours);
+    const apartmentDemandKwh = apartmentAnnualKwh * windowDemandShare;
+    const houseDemandKwh = houseAnnualKwh * windowDemandShare;
     householdApartmentDemandEl.textContent = formatKwh(apartmentDemandKwh);
     householdApartmentCostEl.textContent = formatSEK((apartmentDemandKwh / 1000) * avgSimPriceMwh);
     householdHouseDemandEl.textContent = formatKwh(houseDemandKwh);
