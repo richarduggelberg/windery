@@ -335,9 +335,9 @@
             <tr>
               <td>Coal (base)</td>
               <td>
-                <input type="number" id="costCoal" value="90" min="0" step="1"> billion SEK / GW
+                <input type="number" id="costCoal" value="55" min="0" step="1"> billion SEK / GW
               </td>
-              <td>LCOE, incl. grid connection and fuel</td>
+              <td>LCOE, incl. grid connection and fuel (CCS-equipped, since new unabated coal wouldn't be permitted)</td>
             </tr>
             <tr>
               <td>Wind</td>
@@ -367,9 +367,9 @@
             <tr>
               <td>Gas (variable)</td>
               <td>
-                <input type="number" id="costGas" value="40" min="0" step="1"> billion SEK / GW
+                <input type="number" id="costGas" value="10" min="0" step="1"> billion SEK / GW
               </td>
-              <td>LCOE, incl. grid connection and fuel</td>
+              <td>Capital cost only, incl. grid connection (fuel isn't modeled as a separate cost; gas generation's full market-price revenue counts as profit)</td>
             </tr>
             <tr>
               <td>Battery storage</td>
