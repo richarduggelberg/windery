@@ -1058,14 +1058,19 @@ async function main() {
 
     // Illustrative household cost: annual demand assumption prorated to the selected period, at the
     // average simulated price (not a real bill — no grid fees, taxes, or household usage-shape effects).
+    // Household demand is always shown in kWh (not auto-scaled to MWh/GWh) since that's the unit households know.
+    const formatKwh = (kwh) => {
+      const decimals = kwh < 10 ? 2 : kwh < 100 ? 1 : 0;
+      return `${kwh.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })} kWh`;
+    };
     const apartmentAnnualKwh = Number(householdApartmentAnnualKwhInput.value);
     const houseAnnualKwh = Number(householdHouseAnnualKwhInput.value);
-    const apartmentDemandMWh = (apartmentAnnualKwh / 1000) * (windowHours / totalHours);
-    const houseDemandMWh = (houseAnnualKwh / 1000) * (windowHours / totalHours);
-    householdApartmentDemandEl.textContent = formatQuantity(apartmentDemandMWh, "MWh");
-    householdApartmentCostEl.textContent = formatSEK(apartmentDemandMWh * avgSimPriceMwh);
-    householdHouseDemandEl.textContent = formatQuantity(houseDemandMWh, "MWh");
-    householdHouseCostEl.textContent = formatSEK(houseDemandMWh * avgSimPriceMwh);
+    const apartmentDemandKwh = apartmentAnnualKwh * (windowHours / totalHours);
+    const houseDemandKwh = houseAnnualKwh * (windowHours / totalHours);
+    householdApartmentDemandEl.textContent = formatKwh(apartmentDemandKwh);
+    householdApartmentCostEl.textContent = formatSEK((apartmentDemandKwh / 1000) * avgSimPriceMwh);
+    householdHouseDemandEl.textContent = formatKwh(houseDemandKwh);
+    householdHouseCostEl.textContent = formatSEK((houseDemandKwh / 1000) * avgSimPriceMwh);
 
     // Build cost: only capacity currently above each source's already-installed baseline counts,
     // computed from the slider's current position so lowering it back down reduces cost accordingly.
