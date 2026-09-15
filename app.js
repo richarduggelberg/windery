@@ -344,6 +344,7 @@ async function main() {
   const costMarginalCoalInput = document.getElementById("costMarginalCoal");
   const costMarginalWindInput = document.getElementById("costMarginalWind");
   const costMarginalSolarInput = document.getElementById("costMarginalSolar");
+  const costMarginalHydroInput = document.getElementById("costMarginalHydro");
   const costPriceDeepSurplusInput = document.getElementById("costPriceDeepSurplus");
   const costPriceBalancedInput = document.getElementById("costPriceBalanced");
   const costPriceHydroTopInput = document.getElementById("costPriceHydroTop");
@@ -975,9 +976,9 @@ async function main() {
     capBatteryUsageShare.textContent = `${usageSharePct(dischargeAvgMW).toFixed(0)}%`;
     capImportsUsageShare.textContent = `${usageSharePct(importAvgMW).toFixed(0)}%`;
 
-    // Operating cost & revenue: nuclear/coal/wind/solar are valued at their own fuel cost (what it
-    // costs to run them, regardless of the market); hydro, gas, battery discharge, imports, and exports
-    // are all valued at that hour's actual price (they're the flexible/traded side of the system).
+    // Operating cost & revenue: nuclear/coal/wind/solar/hydro are valued at their own fuel + O&M cost
+    // (what it costs to run them, regardless of the market); gas, battery discharge, imports, and
+    // exports are valued at that hour's actual price (they're the flexible/traded side of the system).
     const windowValueSEK = (genArray) => {
       let sum = 0;
       for (let i = start; i < end; i++) sum += genArray[i] * priceSekMwh[i];
@@ -987,11 +988,12 @@ async function main() {
     const marginalCoal = Number(costMarginalCoalInput.value);
     const marginalWind = Number(costMarginalWindInput.value);
     const marginalSolar = Number(costMarginalSolarInput.value);
+    const marginalHydro = Number(costMarginalHydroInput.value);
     const nuclearOpCostSEK = nuclearMW * windowHours * marginalNuclear;
     const coalOpCostSEK = coalMW * windowHours * marginalCoal;
     const windOpCostSEK = windAvgMW * windowHours * marginalWind;
     const solarOpCostSEK = solarAvgMW * windowHours * marginalSolar;
-    const hydroOpCostSEK = windowValueSEK(hydroGenMW);
+    const hydroOpCostSEK = hydroAvgMW * windowHours * marginalHydro;
     const gasOpCostSEK = windowValueSEK(gasGenMW);
     const batteryOpCostSEK = windowValueSEK(batteryDischargeMW);
     const importOpCostSEK = windowValueSEK(importMW);
@@ -1100,6 +1102,7 @@ async function main() {
   costMarginalCoalInput.addEventListener("input", update);
   costMarginalWindInput.addEventListener("input", update);
   costMarginalSolarInput.addEventListener("input", update);
+  costMarginalHydroInput.addEventListener("input", update);
   costPriceDeepSurplusInput.addEventListener("input", update);
   costPriceBalancedInput.addEventListener("input", update);
   costPriceHydroTopInput.addEventListener("input", update);

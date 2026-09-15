@@ -246,9 +246,11 @@
         <p class="assumptions-note">
           Not a real market simulation: each hour's price is read off the continuous price curve (see the price
           assumptions table below), positioned by that hour's deficit or surplus relative to installed hydro/gas
-          capacity — base, wind, and solar are never scarce enough to set the price themselves, but their output
-          determines how big that hour's deficit or surplus is. Hydro, gas, battery discharge, imports, and exports
-          are all valued at that same hour's price; exports are shown as negative (revenue, not cost).
+          capacity — base, wind, solar, and hydro are never scarce enough to set the price themselves, but their
+          output determines how big that hour's deficit or surplus is. Nuclear, coal, wind, solar, and hydro are
+          valued at their own fuel + O&amp;M cost above (what it actually costs to run them); gas, battery
+          discharge, imports, and exports are valued at that hour's price instead, since they're the
+          flexible/traded side of the system. Exports are shown as negative (revenue, not cost).
         </p>
       </div>
     </section>
@@ -380,13 +382,18 @@
             </tr>
             <tr>
               <td>Wind</td>
-              <td><input type="number" id="costMarginalWind" value="0" step="5"> SEK/MWh</td>
-              <td>No fuel cost</td>
+              <td><input type="number" id="costMarginalWind" value="20" step="5"> SEK/MWh</td>
+              <td>No fuel cost, but turbine gearbox/blade maintenance is non-trivial</td>
             </tr>
             <tr>
               <td>Solar</td>
               <td><input type="number" id="costMarginalSolar" value="0" step="5"> SEK/MWh</td>
-              <td>No fuel cost</td>
+              <td>No fuel cost and minimal moving parts, so O&amp;M is essentially negligible</td>
+            </tr>
+            <tr>
+              <td>Hydro (variable)</td>
+              <td><input type="number" id="costMarginalHydro" value="15" step="5"> SEK/MWh</td>
+              <td>No fuel cost, but dam, reservoir, and turbine upkeep is not free</td>
             </tr>
             <tr>
               <td>Deep surplus (renewables/base far exceed demand)</td>
