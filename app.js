@@ -323,6 +323,14 @@ async function main() {
   const capBatteryGenShare = document.getElementById("capBatteryGenShare");
   const capBatteryUsageShare = document.getElementById("capBatteryUsageShare");
   const capImportsUsageShare = document.getElementById("capImportsUsageShare");
+  const capNuclearProfit = document.getElementById("capNuclearProfit");
+  const capCoalProfit = document.getElementById("capCoalProfit");
+  const capWindProfit = document.getElementById("capWindProfit");
+  const capSolarProfit = document.getElementById("capSolarProfit");
+  const capHydroProfit = document.getElementById("capHydroProfit");
+  const capGasProfit = document.getElementById("capGasProfit");
+  const capBatteryProfit = document.getElementById("capBatteryProfit");
+  const capImportsProfit = document.getElementById("capImportsProfit");
   const costNuclearInput = document.getElementById("costNuclear");
   const costCoalInput = document.getElementById("costCoal");
   const costWindInput = document.getElementById("costWind");
@@ -1079,6 +1087,20 @@ async function main() {
     opGenExport.textContent = formatQuantity(exportAvgMW * windowHours, "MWh");
     opCostExport.textContent = formatSEK(exportOpCostSEK);
     opCostTotal.textContent = formatSEK(totalOpCostSEK);
+
+    // Profit per source for the capacity table: market value of that source's own generation this
+    // period minus its own fuel/O&M cost above. Gas and battery have no separate fuel cost modeled, so
+    // their full market revenue (already computed as their "cost" above) counts as profit; imports are
+    // a pure cost with no revenue, so they show as a loss instead.
+    const priceSumWindow = priceSekMwh.slice(start, end).reduce((a, b) => a + b, 0);
+    capNuclearProfit.textContent = formatSEK(nuclearMW * priceSumWindow - nuclearOpCostSEK);
+    capCoalProfit.textContent = formatSEK(coalMW * priceSumWindow - coalOpCostSEK);
+    capWindProfit.textContent = formatSEK(windowValueSEK(windGenMW) - windOpCostSEK);
+    capSolarProfit.textContent = formatSEK(windowValueSEK(solarGenMW) - solarOpCostSEK);
+    capHydroProfit.textContent = formatSEK(windowValueSEK(hydroGenMW) - hydroOpCostSEK);
+    capGasProfit.textContent = formatSEK(gasOpCostSEK);
+    capBatteryProfit.textContent = formatSEK(batteryOpCostSEK);
+    capImportsProfit.textContent = formatSEK(-importOpCostSEK);
 
     const avgSimPriceMwh = priceSekMwh.slice(start, end).reduce((a, b) => a + b, 0) / windowHours;
     const avgHistPriceMwh = historicalPriceSekMwh.slice(start, end).reduce((a, b) => a + b, 0) / windowHours;
