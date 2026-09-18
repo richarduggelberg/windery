@@ -461,6 +461,11 @@
               <td>Fuel + carbon cost — used only to anchor the price curve's gas tier below, not charged separately in the operating-cost/profit tables (gas's full market revenue still counts as its profit there)</td>
             </tr>
             <tr>
+              <td>Battery (storage)</td>
+              <td><input type="number" id="costBatteryCycles" value="5000" min="1" step="500"> cycles (lifetime)</td>
+              <td>Assumed full charge/discharge cycles over the battery's lifetime. Its capital cost (above) ÷ cycles ÷ capacity gives a cost per MWh discharged, compared against the price (plus the same margin used for hydro/gas) to decide whether to discharge or hold its charge</td>
+            </tr>
+            <tr>
               <td>Deep surplus (renewables/base far exceed demand)</td>
               <td><input type="number" id="costPriceDeepSurplus" value="-150" step="10"> SEK/MWh</td>
               <td>Real Nordic prices do go negative during extreme oversupply (curtailment); can be set negative</td>
@@ -491,7 +496,10 @@
           hydro's capacity runs low (rising water value), then gas takes over as the price-setter (its own,
           typically higher, marginal cost plus the same margin structure) once hydro is fully used, and severe
           scarcity (heavy imports) sets a ceiling once gas is fully used too. Educated-guess estimates, calibrated
-          against 2024 SE3 price statistics, not official figures.
+          against 2024 SE3 price statistics, not official figures. The battery similarly withholds its discharge
+          (but keeps charging from surplus) whenever the price is below its own amortized cost per MWh discharged
+          plus a margin — spreading its capital cost over an assumed number of lifetime cycles, like wind, it would
+          rather sit out an hour than sell at a loss.
         </p>
       </div>
     </section>

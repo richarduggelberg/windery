@@ -162,7 +162,8 @@ function runSimulation(
   baseloadMW,
   hydroCapacityMW,
   gasCapacityMW,
-  windCurtailMask
+  windCurtailMask,
+  batteryWithholdMask
 ) {
   const totalHours = windSpeed.length;
   const windGenMW = new Array(totalHours);
@@ -202,9 +203,13 @@ function runSimulation(
       curtailed = surplus - chargeFromSurplus;
     } else {
       let deficit = -net;
-      discharge = Math.min(deficit, soc);
-      soc -= discharge;
-      deficit -= discharge;
+      // The battery similarly withholds discharge (but keeps charging from surplus) whenever the price
+      // is below its own amortized cost per MWh plus a margin — batteryWithholdMask marks those hours.
+      if (!(batteryWithholdMask && batteryWithholdMask[i])) {
+        discharge = Math.min(deficit, soc);
+        soc -= discharge;
+        deficit -= discharge;
+      }
 
       hydroGen = Math.min(deficit, hydroCapacityMW);
       deficit -= hydroGen;
@@ -386,6 +391,7 @@ async function main() {
   const costMarginalSolarInput = document.getElementById("costMarginalSolar");
   const costMarginalHydroInput = document.getElementById("costMarginalHydro");
   const costMarginalGasInput = document.getElementById("costMarginalGas");
+  const costBatteryCyclesInput = document.getElementById("costBatteryCycles");
   const costPriceDeepSurplusInput = document.getElementById("costPriceDeepSurplus");
   const costMarginNormalInput = document.getElementById("costMarginNormal");
   const costMarginScarceInput = document.getElementById("costMarginScarce");
@@ -771,7 +777,6 @@ async function main() {
     const marginalSolar = Number(costMarginalSolarInput.value);
     const marginalHydro = Number(costMarginalHydroInput.value);
     const marginalGas = Number(costMarginalGasInput.value);
-
     // Each hour's price sits on a continuous curve running through five anchor points, positioned by
     // how deep the deficit (or surplus/curtailment) that hour is relative to installed hydro/gas capacity
     // — a simplified merit-order supply curve: hydro (the cheapest dispatchable source) sets the price,
@@ -782,6 +787,18 @@ async function main() {
     const deepSurplusPrice = Number(costPriceDeepSurplusInput.value);
     const marginNormal = Number(costMarginNormalInput.value);
     const marginScarce = Number(costMarginScarceInput.value);
+
+    // Battery's cost per MWh discharged: capital cost spread over an assumed number of lifetime
+    // full cycles, divided by capacity — compared against the price (plus the same "normal" margin
+    // used for hydro/gas) to decide whether it's worth discharging that hour, or better to hold charge.
+    const batteryCapitalCostSEK = batteryCapacityMWh * (Number(costBatteryInput.value) * 1e6);
+    const batteryCycles = Number(costBatteryCyclesInput.value);
+    const batteryCostPerMWh =
+      batteryCapacityMWh > 0 && batteryCycles > 0
+        ? batteryCapitalCostSEK / (batteryCycles * batteryCapacityMWh)
+        : Infinity;
+    const batteryDischargeThreshold = batteryCostPerMWh + marginNormal;
+
     const balancedPrice = marginalHydro + marginNormal;
     const hydroTopPrice = marginalHydro + marginNormal + marginScarce;
     const gasTopPrice = marginalGas + marginNormal + marginScarce;
@@ -849,9 +866,20 @@ async function main() {
     );
     const windCurtailMask = residualLoadPass1MW.map((load) => (priceAt(load) < marginalWind ? 1 : 0));
 
-    // Pass 2 (final): re-simulate with wind curtailed in those hours — this can also reduce battery
-    // charging/exports in the same hours, or occasionally require a bit more hydro/gas if removing
-    // wind's output tips a surplus hour into a small deficit.
+    // Battery withholding is decided from the deficit facing it directly (demand minus firm generation,
+    // after wind curtailment) rather than from another simulation pass: hydro/gas/import dispatch has
+    // no memory across hours, so "the price this hour would clear at if the battery held back" is fully
+    // known without running the battery forward — unlike wind, there's no need to iterate to a stable mask.
+    const batteryWithholdMask = scaledDemandMW.map((demandMW_, i) => {
+      const windGen = windCurtailMask[i] ? 0 : windCapacityMW * windCapacityFactor(wind.windSpeed100m[i]);
+      const solarGen = solarCapacityMW * solarCapacityFactor(solar.shortwaveRadiation[i]);
+      const deficit = demandMW_ - (windGen + solarGen + baseloadMW);
+      if (deficit <= 0) return 0; // surplus hour — battery is charging, not discharging
+      return priceAt(deficit) < batteryDischargeThreshold ? 1 : 0;
+    });
+
+    // Pass 2 (final): re-simulate with wind curtailed and battery withheld in those hours — this can
+    // also shift some deficits onto hydro/gas/imports in the hours where either sits out.
     const {
       windGenMW,
       solarGenMW,
@@ -872,7 +900,8 @@ async function main() {
       baseloadMW,
       hydroMW,
       gasMW,
-      windCurtailMask
+      windCurtailMask,
+      batteryWithholdMask
     );
 
     const windResampled = resample(wind.time, windGenMW, unit, start, end);
@@ -1357,6 +1386,7 @@ async function main() {
   costMarginalSolarInput.addEventListener("input", update);
   costMarginalHydroInput.addEventListener("input", update);
   costMarginalGasInput.addEventListener("input", update);
+  costBatteryCyclesInput.addEventListener("input", update);
   costPriceDeepSurplusInput.addEventListener("input", update);
   costMarginNormalInput.addEventListener("input", update);
   costMarginScarceInput.addEventListener("input", update);
