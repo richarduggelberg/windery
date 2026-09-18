@@ -390,22 +390,31 @@ async function main() {
   const avgSimPriceEl = document.getElementById("avgSimPrice");
   const avgHistPriceEl = document.getElementById("avgHistPrice");
   const opGenNuclear = document.getElementById("opGenNuclear");
+  const opPriceNuclear = document.getElementById("opPriceNuclear");
   const opCostNuclear = document.getElementById("opCostNuclear");
   const opGenCoal = document.getElementById("opGenCoal");
+  const opPriceCoal = document.getElementById("opPriceCoal");
   const opCostCoal = document.getElementById("opCostCoal");
   const opGenWind = document.getElementById("opGenWind");
+  const opPriceWind = document.getElementById("opPriceWind");
   const opCostWind = document.getElementById("opCostWind");
   const opGenSolar = document.getElementById("opGenSolar");
+  const opPriceSolar = document.getElementById("opPriceSolar");
   const opCostSolar = document.getElementById("opCostSolar");
   const opGenHydro = document.getElementById("opGenHydro");
+  const opPriceHydro = document.getElementById("opPriceHydro");
   const opCostHydro = document.getElementById("opCostHydro");
   const opGenGas = document.getElementById("opGenGas");
+  const opPriceGas = document.getElementById("opPriceGas");
   const opCostGas = document.getElementById("opCostGas");
   const opGenBattery = document.getElementById("opGenBattery");
+  const opPriceBattery = document.getElementById("opPriceBattery");
   const opCostBattery = document.getElementById("opCostBattery");
   const opGenImport = document.getElementById("opGenImport");
+  const opPriceImport = document.getElementById("opPriceImport");
   const opCostImport = document.getElementById("opCostImport");
   const opGenExport = document.getElementById("opGenExport");
+  const opPriceExport = document.getElementById("opPriceExport");
   const opCostExport = document.getElementById("opCostExport");
   const opCostTotal = document.getElementById("opCostTotal");
   const householdApartmentAnnualKwhInput = document.getElementById("householdApartmentAnnualKwh");
@@ -1056,7 +1065,8 @@ async function main() {
     const gasOpCostSEK = windowValueSEK(gasGenMW);
     const batteryOpCostSEK = windowValueSEK(batteryDischargeMW);
     const importOpCostSEK = windowValueSEK(importMW);
-    const exportOpCostSEK = -exportRevenueSEK(exportMW);
+    const exportRevenueTotalSEK = exportRevenueSEK(exportMW);
+    const exportOpCostSEK = -exportRevenueTotalSEK;
     const totalOpCostSEK =
       nuclearOpCostSEK +
       coalOpCostSEK +
@@ -1068,23 +1078,50 @@ async function main() {
       importOpCostSEK +
       exportOpCostSEK;
 
+    // Average price received: each source's generation-weighted market value divided by its own
+    // generation this period — NOT its own fuel/O&M cost. Nuclear/coal generate at a constant rate
+    // regardless of price (so theirs is just the plain average price), while wind/solar can't choose
+    // when to generate (so theirs reflects whatever price happened to prevail whenever they ran);
+    // hydro/gas/battery/imports are dispatched on demand, so theirs tends to sit higher.
+    const priceSumWindow = priceSekMwh.slice(start, end).reduce((a, b) => a + b, 0);
+    const avgPriceSekMwh = (marketValueSEK, genMWh) => (genMWh > 0 ? marketValueSEK / genMWh : null);
+    const formatPrice = (value) => (value === null ? "–" : `${value.toFixed(0)} SEK/MWh`);
+    const nuclearGenMWh = nuclearMW * windowHours;
+    const coalGenMWh = coalMW * windowHours;
+    const windGenMWh = windAvgMW * windowHours;
+    const solarGenMWh = solarAvgMW * windowHours;
+    const hydroGenMWh = hydroAvgMW * windowHours;
+    const gasGenMWh = gasAvgMW * windowHours;
+    const batteryGenMWh = dischargeAvgMW * windowHours;
+    const importGenMWh = importAvgMW * windowHours;
+    const exportGenMWh = exportAvgMW * windowHours;
+
     opGenNuclear.textContent = formatQuantity(nuclearMW * windowHours, "MWh");
+    opPriceNuclear.textContent = formatPrice(avgPriceSekMwh(nuclearMW * priceSumWindow, nuclearGenMWh));
     opCostNuclear.textContent = formatSEK(nuclearOpCostSEK);
     opGenCoal.textContent = formatQuantity(coalMW * windowHours, "MWh");
+    opPriceCoal.textContent = formatPrice(avgPriceSekMwh(coalMW * priceSumWindow, coalGenMWh));
     opCostCoal.textContent = formatSEK(coalOpCostSEK);
     opGenWind.textContent = formatQuantity(windAvgMW * windowHours, "MWh");
+    opPriceWind.textContent = formatPrice(avgPriceSekMwh(windowValueSEK(windGenMW), windGenMWh));
     opCostWind.textContent = formatSEK(windOpCostSEK);
     opGenSolar.textContent = formatQuantity(solarAvgMW * windowHours, "MWh");
+    opPriceSolar.textContent = formatPrice(avgPriceSekMwh(windowValueSEK(solarGenMW), solarGenMWh));
     opCostSolar.textContent = formatSEK(solarOpCostSEK);
     opGenHydro.textContent = formatQuantity(hydroAvgMW * windowHours, "MWh");
+    opPriceHydro.textContent = formatPrice(avgPriceSekMwh(windowValueSEK(hydroGenMW), hydroGenMWh));
     opCostHydro.textContent = formatSEK(hydroOpCostSEK);
     opGenGas.textContent = formatQuantity(gasAvgMW * windowHours, "MWh");
+    opPriceGas.textContent = formatPrice(avgPriceSekMwh(gasOpCostSEK, gasGenMWh));
     opCostGas.textContent = formatSEK(gasOpCostSEK);
     opGenBattery.textContent = formatQuantity(dischargeAvgMW * windowHours, "MWh");
+    opPriceBattery.textContent = formatPrice(avgPriceSekMwh(batteryOpCostSEK, batteryGenMWh));
     opCostBattery.textContent = formatSEK(batteryOpCostSEK);
     opGenImport.textContent = formatQuantity(importAvgMW * windowHours, "MWh");
+    opPriceImport.textContent = formatPrice(avgPriceSekMwh(importOpCostSEK, importGenMWh));
     opCostImport.textContent = formatSEK(importOpCostSEK);
     opGenExport.textContent = formatQuantity(exportAvgMW * windowHours, "MWh");
+    opPriceExport.textContent = formatPrice(avgPriceSekMwh(exportRevenueTotalSEK, exportGenMWh));
     opCostExport.textContent = formatSEK(exportOpCostSEK);
     opCostTotal.textContent = formatSEK(totalOpCostSEK);
 
@@ -1092,7 +1129,6 @@ async function main() {
     // period minus its own fuel/O&M cost above. Gas and battery have no separate fuel cost modeled, so
     // their full market revenue (already computed as their "cost" above) counts as profit; imports are
     // a pure cost with no revenue, so they show as a loss instead.
-    const priceSumWindow = priceSekMwh.slice(start, end).reduce((a, b) => a + b, 0);
     capNuclearProfit.textContent = formatSEK(nuclearMW * priceSumWindow - nuclearOpCostSEK);
     capCoalProfit.textContent = formatSEK(coalMW * priceSumWindow - coalOpCostSEK);
     capWindProfit.textContent = formatSEK(windowValueSEK(windGenMW) - windOpCostSEK);

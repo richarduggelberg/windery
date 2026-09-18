@@ -196,6 +196,7 @@
             <tr>
               <th>Source</th>
               <th>Generation</th>
+              <th>Average price received</th>
               <th>Cost / revenue</th>
             </tr>
           </thead>
@@ -203,50 +204,60 @@
             <tr>
               <td>Nuclear (base)</td>
               <td id="opGenNuclear"></td>
+              <td id="opPriceNuclear"></td>
               <td id="opCostNuclear"></td>
             </tr>
             <tr>
               <td>Coal (base)</td>
               <td id="opGenCoal"></td>
+              <td id="opPriceCoal"></td>
               <td id="opCostCoal"></td>
             </tr>
             <tr>
               <td>Wind</td>
               <td id="opGenWind"></td>
+              <td id="opPriceWind"></td>
               <td id="opCostWind"></td>
             </tr>
             <tr>
               <td>Solar</td>
               <td id="opGenSolar"></td>
+              <td id="opPriceSolar"></td>
               <td id="opCostSolar"></td>
             </tr>
             <tr>
               <td>Hydro (variable)</td>
               <td id="opGenHydro"></td>
+              <td id="opPriceHydro"></td>
               <td id="opCostHydro"></td>
             </tr>
             <tr>
               <td>Gas (variable)</td>
               <td id="opGenGas"></td>
+              <td id="opPriceGas"></td>
               <td id="opCostGas"></td>
             </tr>
             <tr>
               <td>Battery discharge</td>
               <td id="opGenBattery"></td>
+              <td id="opPriceBattery"></td>
               <td id="opCostBattery"></td>
             </tr>
             <tr>
               <td>Imports</td>
               <td id="opGenImport"></td>
+              <td id="opPriceImport"></td>
               <td id="opCostImport"></td>
             </tr>
             <tr>
               <td>Exports (revenue)</td>
               <td id="opGenExport"></td>
+              <td id="opPriceExport"></td>
               <td id="opCostExport"></td>
             </tr>
             <tr class="total-row">
               <td>Net total</td>
+              <td></td>
               <td></td>
               <td id="opCostTotal"></td>
             </tr>
@@ -262,6 +273,11 @@
           of the system. Exports are shown as negative (revenue, not cost), but their price tails off as the
           exported volume grows, since neighboring markets' own demand for extra imported power has diminishing
           returns too — dumping a lot of surplus abroad at once doesn't fetch the full domestic price for all of it.
+          Average price received is each source's generation-weighted average market price this period (nuclear/
+          coal generate at a constant rate regardless of price, so theirs is just the plain average; wind and solar
+          can't choose when to generate, so theirs reflects whatever price happened to prevail whenever the wind
+          blew or the sun shone; hydro, gas, battery, and imports are dispatched on demand, so theirs tends to sit
+          higher, closer to the scarcity end of the price curve).
         </p>
         <table id="householdCostTable" class="data-table">
           <thead>
