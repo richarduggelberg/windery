@@ -1135,8 +1135,9 @@ async function main() {
     const addedHydroMW = Math.max(0, hydroMW - HYDRO_BASELINE_MW);
     const addedGasMW = Math.max(0, gasMW - GAS_BASELINE_MW);
     const addedBatteryTWh = batteryCapacityTWh;
+    const addedBatteryGWh = addedBatteryTWh * 1000;
 
-    // Cost inputs are billion SEK per GW (generation) or per TWh (battery).
+    // Cost inputs are billion SEK per GW (generation) or per GWh (battery).
     const sekPerMW = (billionPerGW) => (Number(billionPerGW) * 1e9) / 1000;
     const nuclearCostSEK = addedNuclearMW * sekPerMW(costNuclearInput.value);
     const coalCostSEK = addedCoalMW * sekPerMW(costCoalInput.value);
@@ -1144,9 +1145,10 @@ async function main() {
     const solarCostSEK = addedSolarMW * sekPerMW(costSolarInput.value);
     const hydroCostSEK = addedHydroMW * sekPerMW(costHydroInput.value);
     const gasCostSEK = addedGasMW * sekPerMW(costGasInput.value);
-    const batteryCostSEK = addedBatteryTWh * Number(costBatteryInput.value) * 1e9;
+    const batteryCostSEK = addedBatteryGWh * Number(costBatteryInput.value) * 1e9;
     const totalCostSEK =
       nuclearCostSEK + coalCostSEK + windCostSEK + solarCostSEK + hydroCostSEK + gasCostSEK + batteryCostSEK;
+
 
     // Payoff time: build cost above baseline vs. the ADDED capacity's own estimated annual profit —
     // generation valued at the simulated market price, over ALL hours of the year (regardless of the

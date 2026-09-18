@@ -339,28 +339,28 @@
               <td>
                 <input type="number" id="costNuclear" value="150" min="0" step="1"> billion SEK / GW
               </td>
-              <td>LCOE, incl. grid connection</td>
+              <td>Overnight capital cost, incl. an estimated grid connection cost</td>
             </tr>
             <tr>
               <td>Coal (base)</td>
               <td>
                 <input type="number" id="costCoal" value="55" min="0" step="1"> billion SEK / GW
               </td>
-              <td>LCOE, incl. grid connection and fuel (CCS-equipped, since new unabated coal wouldn't be permitted)</td>
+              <td>Overnight capital cost, incl. an estimated grid connection cost (CCS-equipped, since new unabated coal wouldn't be permitted)</td>
             </tr>
             <tr>
               <td>Wind</td>
               <td>
                 <input type="number" id="costWind" value="22" min="0" step="1"> billion SEK / GW
               </td>
-              <td>LCOE, incl. grid connection (wind sites often need substantial new transmission)</td>
+              <td>Overnight capital cost, incl. an estimated grid connection cost (wind sites often need substantial new transmission)</td>
             </tr>
             <tr>
               <td>Solar</td>
               <td>
                 <input type="number" id="costSolar" value="8" min="0" step="1"> billion SEK / GW
               </td>
-              <td>LCOE, incl. grid connection</td>
+              <td>Overnight capital cost, incl. an estimated grid connection cost</td>
             </tr>
             <tr>
               <td>Hydro (variable)</td>
@@ -383,17 +383,19 @@
             <tr>
               <td>Battery storage</td>
               <td>
-                <input type="number" id="costBattery" value="2200" min="0" step="10"> billion SEK / TWh
+                <input type="number" id="costBattery" value="2.2" min="0" step="0.1"> billion SEK / GWh
               </td>
-              <td>LCOS</td>
+              <td>Overnight capital cost (installed system cost)</td>
             </tr>
           </tbody>
         </table>
         <p class="assumptions-note">
-          Illustrative, editable estimates for building new capacity in Sweden (SEK, not inflation-adjusted to any
-          particular year). Levelized figures (LCOE/LCOS) fold in lifetime capital, operating, and financing costs
-          per unit of installed capacity; wind's figure is weighted up to reflect the extra grid/network buildout it
-          typically requires compared to plants sited near existing strong grid infrastructure.
+          Illustrative, editable estimates of the actual overnight capital (build) cost for new capacity in Sweden
+          (SEK, not inflation-adjusted to any particular year) — not a levelized figure, so it excludes ongoing
+          fuel and O&amp;M costs, which are captured separately in the marginal-cost table below. Each figure
+          includes an estimated cost of connecting to the grid; wind's figure is weighted up to reflect the extra
+          grid/network buildout it typically requires compared to plants sited near existing strong grid
+          infrastructure.
         </p>
       </div>
     </section>
