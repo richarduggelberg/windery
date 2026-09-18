@@ -161,7 +161,8 @@ function runSimulation(
   batteryCapacityMWh,
   baseloadMW,
   hydroCapacityMW,
-  gasCapacityMW
+  gasCapacityMW,
+  windCurtailMask
 ) {
   const totalHours = windSpeed.length;
   const windGenMW = new Array(totalHours);
@@ -178,7 +179,9 @@ function runSimulation(
   // Demand is met additively, in priority order: base, then wind+solar, then battery, then hydro,
   // then gas (both last-resort, freely dispatchable up to their own installed capacity).
   for (let i = 0; i < totalHours; i++) {
-    const windGen = windCapacityMW * windCapacityFactor(windSpeed[i]);
+    // Wind can feather its blades and curtail entirely rather than sell at a loss (unlike inflexible
+    // baseload); windCurtailMask marks hours where the market price would fall below wind's own cost.
+    const windGen = windCurtailMask && windCurtailMask[i] ? 0 : windCapacityMW * windCapacityFactor(windSpeed[i]);
     const solarGen = solarCapacityMW * solarCapacityFactor(solarIrradiance[i]);
     const firmGen = windGen + solarGen + baseloadMW; // base + wind + solar, none of it is dispatchable
     const demand = demandMW[i];
@@ -762,40 +765,12 @@ async function main() {
     hydroCapacityValue.textContent = `${hydroCapacityInput.value}% (${formatQuantity(hydroMW, "MW")})`;
     gasCapacityValue.textContent = formatQuantity(gasMW, "MW");
 
-    // Always simulate the full year so battery state of charge carries over correctly,
-    // then slice down to the selected window for display and the probability figure.
-    const {
-      windGenMW,
-      solarGenMW,
-      batteryDischargeMW,
-      hydroGenMW,
-      gasGenMW,
-      socMWh,
-      unmet,
-      exportMW,
-      importMW,
-    } = runSimulation(
-      wind.windSpeed100m,
-      solar.shortwaveRadiation,
-      scaledDemandMW,
-      windCapacityMW,
-      solarCapacityMW,
-      batteryCapacityMWh,
-      baseloadMW,
-      hydroMW,
-      gasMW
-    );
-
-    const windResampled = resample(wind.time, windGenMW, unit, start, end);
-    const solarResampled = resample(wind.time, solarGenMW, unit, start, end);
-    const dischargeResampled = resample(wind.time, batteryDischargeMW, unit, start, end);
-    const hydroResampled = resample(wind.time, hydroGenMW, unit, start, end);
-    const gasResampled = resample(wind.time, gasGenMW, unit, start, end);
-    const socResampled = resample(wind.time, socMWh, unit, start, end);
-    const demandResampled = resample(demand.time, scaledDemandMW, unit, start, end);
-    const nuclearSeries = new Array(windResampled.values.length).fill(nuclearMW);
-    const coalSeries = new Array(windResampled.values.length).fill(coalMW);
-    const firmGenSeries = windResampled.values.map((v, i) => v + solarResampled.values[i] + baseloadMW);
+    const marginalNuclear = Number(costMarginalNuclearInput.value);
+    const marginalCoal = Number(costMarginalCoalInput.value);
+    const marginalWind = Number(costMarginalWindInput.value);
+    const marginalSolar = Number(costMarginalSolarInput.value);
+    const marginalHydro = Number(costMarginalHydroInput.value);
+    const marginalGas = Number(costMarginalGasInput.value);
 
     // Each hour's price sits on a continuous curve running through five anchor points, positioned by
     // how deep the deficit (or surplus/curtailment) that hour is relative to installed hydro/gas capacity
@@ -805,13 +780,11 @@ async function main() {
     // smooth, weather/demand-driven variability instead of a few fixed numbers, and can dip below zero
     // during extreme oversupply, like real prices.
     const deepSurplusPrice = Number(costPriceDeepSurplusInput.value);
-    const marginalHydroForPrice = Number(costMarginalHydroInput.value);
-    const marginalGasForPrice = Number(costMarginalGasInput.value);
     const marginNormal = Number(costMarginNormalInput.value);
     const marginScarce = Number(costMarginScarceInput.value);
-    const balancedPrice = marginalHydroForPrice + marginNormal;
-    const hydroTopPrice = marginalHydroForPrice + marginNormal + marginScarce;
-    const gasTopPrice = marginalGasForPrice + marginNormal + marginScarce;
+    const balancedPrice = marginalHydro + marginNormal;
+    const hydroTopPrice = marginalHydro + marginNormal + marginScarce;
+    const gasTopPrice = marginalGas + marginNormal + marginScarce;
     const scarcityPrice = Number(costPriceScarcityInput.value);
     const avgDemandMW = scaledDemandMW.reduce((a, b) => a + b, 0) / scaledDemandMW.length;
     // Tier widths are capped relative to average demand: real SE3 prices swing across their full range
@@ -856,6 +829,63 @@ async function main() {
       const tangentSlope = (CURVE_POWER * (yLast - yPrev)) / (xLast - xPrev);
       return yLast + tangentSlope * (residualLoadMW - xLast);
     }
+
+    // Pass 1: simulate with wind always generating, to find hours where the resulting price would
+    // fall below wind's own operating cost — wind can feather its blades and curtail entirely rather
+    // than sell at a loss, unlike inflexible baseload (nuclear/coal, which run regardless of price).
+    const uncurtailed = runSimulation(
+      wind.windSpeed100m,
+      solar.shortwaveRadiation,
+      scaledDemandMW,
+      windCapacityMW,
+      solarCapacityMW,
+      batteryCapacityMWh,
+      baseloadMW,
+      hydroMW,
+      gasMW
+    );
+    const residualLoadPass1MW = uncurtailed.hydroGenMW.map(
+      (v, i) => v + uncurtailed.gasGenMW[i] + uncurtailed.importMW[i] - uncurtailed.exportMW[i]
+    );
+    const windCurtailMask = residualLoadPass1MW.map((load) => (priceAt(load) < marginalWind ? 1 : 0));
+
+    // Pass 2 (final): re-simulate with wind curtailed in those hours — this can also reduce battery
+    // charging/exports in the same hours, or occasionally require a bit more hydro/gas if removing
+    // wind's output tips a surplus hour into a small deficit.
+    const {
+      windGenMW,
+      solarGenMW,
+      batteryDischargeMW,
+      hydroGenMW,
+      gasGenMW,
+      socMWh,
+      unmet,
+      exportMW,
+      importMW,
+    } = runSimulation(
+      wind.windSpeed100m,
+      solar.shortwaveRadiation,
+      scaledDemandMW,
+      windCapacityMW,
+      solarCapacityMW,
+      batteryCapacityMWh,
+      baseloadMW,
+      hydroMW,
+      gasMW,
+      windCurtailMask
+    );
+
+    const windResampled = resample(wind.time, windGenMW, unit, start, end);
+    const solarResampled = resample(wind.time, solarGenMW, unit, start, end);
+    const dischargeResampled = resample(wind.time, batteryDischargeMW, unit, start, end);
+    const hydroResampled = resample(wind.time, hydroGenMW, unit, start, end);
+    const gasResampled = resample(wind.time, gasGenMW, unit, start, end);
+    const socResampled = resample(wind.time, socMWh, unit, start, end);
+    const demandResampled = resample(demand.time, scaledDemandMW, unit, start, end);
+    const nuclearSeries = new Array(windResampled.values.length).fill(nuclearMW);
+    const coalSeries = new Array(windResampled.values.length).fill(coalMW);
+    const firmGenSeries = windResampled.values.map((v, i) => v + solarResampled.values[i] + baseloadMW);
+
     // Deficit still uncovered by battery (hydro + gas + imports), net of any curtailed/exported surplus.
     const residualLoadMW = hydroGenMW.map((v, i) => v + gasGenMW[i] + importMW[i] - exportMW[i]);
     const priceSekMwh = residualLoadMW.map(priceAt);
@@ -1059,11 +1089,6 @@ async function main() {
       }
       return sum;
     };
-    const marginalNuclear = Number(costMarginalNuclearInput.value);
-    const marginalCoal = Number(costMarginalCoalInput.value);
-    const marginalWind = Number(costMarginalWindInput.value);
-    const marginalSolar = Number(costMarginalSolarInput.value);
-    const marginalHydro = Number(costMarginalHydroInput.value);
     const nuclearOpCostSEK = nuclearMW * windowHours * marginalNuclear;
     const coalOpCostSEK = coalMW * windowHours * marginalCoal;
     const windOpCostSEK = windAvgMW * windowHours * marginalWind;

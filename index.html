@@ -335,7 +335,9 @@
       Only surplus base + wind + solar generation charges the battery — hydro/gas never charge it. The chart shades
       the gap between base + wind + solar generation and demand red where they fall short (battery/hydro/gas had to
       help) and green where there's a surplus (charging the battery or exporting). Battery is modeled with unlimited
-      charge/discharge power and a simple energy cap.
+      charge/discharge power and a simple energy cap. Wind also curtails (stops generating) in hours where the
+      resulting market price would fall below its own operating cost — unlike nuclear/coal, which keep running
+      regardless of profitability, wind can simply feather its blades rather than sell at a loss.
     </p>
 
     <section class="assumptions">
