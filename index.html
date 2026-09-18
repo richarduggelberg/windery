@@ -454,24 +454,24 @@
               <td>No fuel cost, but dam, reservoir, and turbine upkeep is not free</td>
             </tr>
             <tr>
+              <td>Gas (variable)</td>
+              <td><input type="number" id="costMarginalGas" value="550" step="10"> SEK/MWh</td>
+              <td>Fuel + carbon cost — used only to anchor the price curve's gas tier below, not charged separately in the operating-cost/profit tables (gas's full market revenue still counts as its profit there)</td>
+            </tr>
+            <tr>
               <td>Deep surplus (renewables/base far exceed demand)</td>
               <td><input type="number" id="costPriceDeepSurplus" value="-150" step="10"> SEK/MWh</td>
               <td>Real Nordic prices do go negative during extreme oversupply (curtailment); can be set negative</td>
             </tr>
             <tr>
-              <td>Balanced (base + wind/solar ≈ demand)</td>
-              <td><input type="number" id="costPriceBalanced" value="100" step="10"> SEK/MWh</td>
-              <td>Typical/median wholesale price when supply and demand are roughly in balance</td>
+              <td>Margin above cost (capacity still plentiful)</td>
+              <td><input type="number" id="costMarginNormal" value="50" step="5"> SEK/MWh</td>
+              <td>Added to whichever source is setting the price — hydro, then gas — above its own marginal cost, once demand exceeds nuclear/coal/wind/solar's output</td>
             </tr>
             <tr>
-              <td>Hydro tier fully used</td>
-              <td><input type="number" id="costPriceHydroTop" value="700" step="10"> SEK/MWh</td>
-              <td>Price once the deficit has used up all installed hydro capacity</td>
-            </tr>
-            <tr>
-              <td>Gas tier fully used</td>
-              <td><input type="number" id="costPriceGasTop" value="1300" step="10"> SEK/MWh</td>
-              <td>Price once the deficit has also used up all installed gas capacity</td>
+              <td>Margin above cost (capacity nearly exhausted)</td>
+              <td><input type="number" id="costMarginScarce" value="650" step="10"> SEK/MWh</td>
+              <td>Extra scarcity/opportunity-cost premium added as the price-setting tier's capacity runs low — e.g. hydro reservoirs drawing down or gas peakers nearly maxed out</td>
             </tr>
             <tr>
               <td>Severe scarcity (heavy imports)</td>
@@ -481,13 +481,15 @@
           </tbody>
         </table>
         <p class="assumptions-note">
-          Illustrative, editable price curve — different from the capital build costs above and from nuclear/coal/
-          wind/solar's own fuel costs (which only feed the operating-cost table, not the price). Each hour's price
-          is read off a continuous curve running through the anchor points above, positioned by how much of the
-          hydro/gas/import capacity stack that hour's deficit (or surplus/curtailment) actually uses — so price
-          swings smoothly with weather and demand instead of jumping between a few fixed numbers, matching how
-          real prices move. Educated-guess estimates, calibrated against 2024 SE3 price statistics, not official
-          figures.
+          Illustrative, editable price curve — different from the capital build costs above. A simplified stand-in
+          for real merit-order pricing: nuclear, coal, wind, and solar never set the price themselves (base runs
+          regardless of profitability, and wind/solar have near-zero fuel cost), but their combined output
+          determines how big that hour's deficit or surplus is. Hydro is the cheapest dispatchable source, so its
+          own marginal cost plus a margin sets the price whenever it still has spare capacity; the margin grows as
+          hydro's capacity runs low (rising water value), then gas takes over as the price-setter (its own,
+          typically higher, marginal cost plus the same margin structure) once hydro is fully used, and severe
+          scarcity (heavy imports) sets a ceiling once gas is fully used too. Educated-guess estimates, calibrated
+          against 2024 SE3 price statistics, not official figures.
         </p>
       </div>
     </section>

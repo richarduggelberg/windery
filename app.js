@@ -382,10 +382,10 @@ async function main() {
   const costMarginalWindInput = document.getElementById("costMarginalWind");
   const costMarginalSolarInput = document.getElementById("costMarginalSolar");
   const costMarginalHydroInput = document.getElementById("costMarginalHydro");
+  const costMarginalGasInput = document.getElementById("costMarginalGas");
   const costPriceDeepSurplusInput = document.getElementById("costPriceDeepSurplus");
-  const costPriceBalancedInput = document.getElementById("costPriceBalanced");
-  const costPriceHydroTopInput = document.getElementById("costPriceHydroTop");
-  const costPriceGasTopInput = document.getElementById("costPriceGasTop");
+  const costMarginNormalInput = document.getElementById("costMarginNormal");
+  const costMarginScarceInput = document.getElementById("costMarginScarce");
   const costPriceScarcityInput = document.getElementById("costPriceScarcity");
   const avgSimPriceEl = document.getElementById("avgSimPrice");
   const avgHistPriceEl = document.getElementById("avgHistPrice");
@@ -799,12 +799,19 @@ async function main() {
 
     // Each hour's price sits on a continuous curve running through five anchor points, positioned by
     // how deep the deficit (or surplus/curtailment) that hour is relative to installed hydro/gas capacity
-    // — a simplified merit-order supply curve. This gives smooth, weather/demand-driven variability
-    // instead of a few fixed numbers, and can dip below zero during extreme oversupply, like real prices.
+    // — a simplified merit-order supply curve: hydro (the cheapest dispatchable source) sets the price,
+    // plus a margin that grows as its capacity runs low, until gas takes over as the (costlier) marginal
+    // source once hydro is fully used. Nuclear/coal/wind/solar never set the price themselves. This gives
+    // smooth, weather/demand-driven variability instead of a few fixed numbers, and can dip below zero
+    // during extreme oversupply, like real prices.
     const deepSurplusPrice = Number(costPriceDeepSurplusInput.value);
-    const balancedPrice = Number(costPriceBalancedInput.value);
-    const hydroTopPrice = Number(costPriceHydroTopInput.value);
-    const gasTopPrice = Number(costPriceGasTopInput.value);
+    const marginalHydroForPrice = Number(costMarginalHydroInput.value);
+    const marginalGasForPrice = Number(costMarginalGasInput.value);
+    const marginNormal = Number(costMarginNormalInput.value);
+    const marginScarce = Number(costMarginScarceInput.value);
+    const balancedPrice = marginalHydroForPrice + marginNormal;
+    const hydroTopPrice = marginalHydroForPrice + marginNormal + marginScarce;
+    const gasTopPrice = marginalGasForPrice + marginNormal + marginScarce;
     const scarcityPrice = Number(costPriceScarcityInput.value);
     const avgDemandMW = scaledDemandMW.reduce((a, b) => a + b, 0) / scaledDemandMW.length;
     // Tier widths are capped relative to average demand: real SE3 prices swing across their full range
@@ -1324,10 +1331,10 @@ async function main() {
   costMarginalWindInput.addEventListener("input", update);
   costMarginalSolarInput.addEventListener("input", update);
   costMarginalHydroInput.addEventListener("input", update);
+  costMarginalGasInput.addEventListener("input", update);
   costPriceDeepSurplusInput.addEventListener("input", update);
-  costPriceBalancedInput.addEventListener("input", update);
-  costPriceHydroTopInput.addEventListener("input", update);
-  costPriceGasTopInput.addEventListener("input", update);
+  costMarginNormalInput.addEventListener("input", update);
+  costMarginScarceInput.addEventListener("input", update);
   costPriceScarcityInput.addEventListener("input", update);
   householdApartmentAnnualKwhInput.addEventListener("input", update);
   householdHouseAnnualKwhInput.addEventListener("input", update);
